@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@theme {
+  /* Material 3 Expressive Custom Palette */
+  --color-primary: #285A71;
+  --color-secondary: #CFDA5A;
+  --color-background-app: #FCE4C0;
+  
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+  --radius-3xl: 3rem;
+  
+  --shadow-expressive: 0 8px 32px rgba(40, 90, 113, 0.15);
+}
+
+@layer base {
+  body {
+    @apply bg-background-app text-primary min-h-screen font-sans;
+  }
+}
+
+/* Markdown rendering inside chat bubbles */
+@layer components {
+  .prose p { margin-bottom: 0.5rem; }
+  .prose p:last-child { margin-bottom: 0; }
+  .prose strong { font-weight: 700; }
+  .prose em { font-style: italic; }
+  .prose ol { list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+  .prose ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+  .prose li { margin-bottom: 0.25rem; }
+  .prose h1, .prose h2, .prose h3 { font-weight: 700; margin-bottom: 0.25rem; }
+  .prose code { background: rgba(0,0,0,0.08); border-radius: 0.25rem; padding: 0 0.25rem; font-size: 0.85em; }
+}
