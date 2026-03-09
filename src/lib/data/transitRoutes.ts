@@ -1,4 +1,11 @@
-export type RouteId = 'metro-1' | 'metro-2' | 'metro-3' | 'ecovia';
+export type RouteId =
+  | 'metro-1' | 'metro-2' | 'metro-3' | 'ecovia'
+  // Bus routes (IDA = outbound, VUELTA = return)
+  | 'ruta-1-central-ida' | 'ruta-1-central-vuelta'
+  | 'ruta-13-c4-ida' | 'ruta-13-c4-vuelta'
+  | 'ruta-220-pedregal-ida' | 'ruta-220-pedregal-vuelta'
+  | 'ruta-226-bosques-ida' | 'ruta-226-bosques-vuelta'
+  | 'ruta-unidad-laredo-ida' | 'ruta-unidad-laredo-vuelta';
 
 export interface Station {
   name: string;
@@ -13,7 +20,9 @@ export interface TransitRoute {
   label: string;
 }
 
-export const transitRoutes: Record<RouteId, TransitRoute> = {
+import { busRoutes } from './busRoutesGenerated';
+
+const coreRoutes: Record<string, TransitRoute> = {
   'metro-1': {
     color: '#E5A52B',
     label: 'Metro Línea 1',
@@ -252,5 +261,10 @@ export const transitRoutes: Record<RouteId, TransitRoute> = {
       { name: 'Valle Fértil',          coordinates: [-100.166208, 25.705515] },
       { name: 'Valle Soleado',         coordinates: [-100.158342, 25.703437] },
     ]
-  }
+  },
+
+  // Bus routes (auto-generated from KML files)
+  ...busRoutes,
 };
+
+export const transitRoutes = coreRoutes as Record<RouteId, TransitRoute>;

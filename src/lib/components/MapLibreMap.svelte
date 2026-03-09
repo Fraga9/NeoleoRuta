@@ -11,7 +11,7 @@
   const MONTERREY_LNG = -100.3161;
   const MONTERREY_LAT = 25.6866;
 
-  let mapState = $state<MapState>({ routes: [], origin: null, destination: null, boardingStations: [], alightingStations: [] });
+  let mapState = $state<MapState>({ routes: [], origin: null, destination: null, boardingStations: [], alightingStations: [], walkSegments: [] });
   let mapLoaded = $state(false);
 
   // Keep track of markers so we can remove them
@@ -48,6 +48,42 @@
     dynamicLayerIds.push(layer.id);
   }
 
+  /** Find the index in coords array closest to a target [lng, lat]. */
+  function closestCoordIdx(coords: number[][], target: [number, number]): number {
+    let best = 0, bestDist = Infinity;
+    for (let i = 0; i < coords.length; i++) {
+      const d = (coords[i][0] - target[0]) ** 2 + (coords[i][1] - target[1]) ** 2;
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    return best;
+  }
+
+  /** Slice the route GeoJSON to only the boarding→alighting segment. Falls back to full line. */
+  function getSegmentGeoJSON(routeId: RouteId): GeoJSON.FeatureCollection {
+    const route = transitRoutes[routeId];
+    const fullCoords = (route.line.features[0].geometry as GeoJSON.LineString).coordinates;
+
+    const boardStation = mapState.boardingStations.find(name => route.stations.some(s => s.name === name));
+    const alightStation = mapState.alightingStations.find(name => route.stations.some(s => s.name === name));
+
+    if (!boardStation || !alightStation) return route.line;
+
+    const boardStationData = route.stations.find(s => s.name === boardStation);
+    const alightStationData = route.stations.find(s => s.name === alightStation);
+    if (!boardStationData || !alightStationData) return route.line;
+
+    // Use coordinate proximity to find the right slice point in the raw line geometry.
+    // This works correctly for both metro (1 coord/station) and bus routes (hundreds of coords).
+    const startIdx = closestCoordIdx(fullCoords, boardStationData.coordinates);
+    const endIdx = closestCoordIdx(fullCoords, alightStationData.coordinates);
+    const segmentCoords = fullCoords.slice(Math.min(startIdx, endIdx), Math.max(startIdx, endIdx) + 1);
+
+    return {
+      type: 'FeatureCollection',
+      features: [{ ...route.line.features[0], geometry: { type: 'LineString', coordinates: segmentCoords } }]
+    };
+  }
+
   function updateMap() {
     if (!map || !mapLoaded) return;
     cleanupLayers();
@@ -59,8 +95,9 @@
       if (!id || !transitRoutes[id]) return;
       const route = transitRoutes[id];
 
-      // Line
-      addSource(`source-${id}`, route.line);
+      // Line — draw only the boarded segment (board→alight), full line as fallback
+      const segmentGeoJSON = getSegmentGeoJSON(id);
+      addSource(`source-${id}`, segmentGeoJSON);
       addLayer({
         id: `layer-${id}`,
         type: 'line',
@@ -164,26 +201,21 @@
       markers.push(marker);
       allCoords.push(mapState.origin.coordinates);
 
-      // Walking line from origin to nearest boarding station
+      // Walk leg: use OSRM geometry if available, otherwise straight dashed line
+      const originWalk = mapState.walkSegments[0];
       const boardStation = findStationCoords(mapState.boardingStations[0]);
-      if (boardStation) {
+      if (originWalk?.geometry || boardStation) {
+        const walkCoords = originWalk?.geometry?.coordinates
+          ?? [mapState.origin.coordinates, boardStation!];
         addSource('walking-origin', {
           type: 'FeatureCollection',
-          features: [{ type: 'Feature', properties: {}, geometry: {
-            type: 'LineString',
-            coordinates: [mapState.origin.coordinates, boardStation]
-          }}]
+          features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: walkCoords } }]
         });
         addLayer({
           id: 'walking-origin-line',
           type: 'line',
           source: 'walking-origin',
-          paint: {
-            'line-color': '#6b7280',
-            'line-width': 3,
-            'line-dasharray': [2, 3],
-            'line-opacity': 0.7
-          }
+          paint: { 'line-color': '#6b7280', 'line-width': 3, 'line-dasharray': [2, 3], 'line-opacity': 0.7 }
         });
       }
     }
@@ -197,28 +229,23 @@
       markers.push(marker);
       allCoords.push(mapState.destination.coordinates);
 
-      // Walking line from last alighting station to destination
+      // Walk leg: use OSRM geometry if available, otherwise straight dashed line
+      const destWalk = mapState.walkSegments[mapState.walkSegments.length - 1];
       const alightStation = findStationCoords(
         mapState.alightingStations[mapState.alightingStations.length - 1]
       );
-      if (alightStation) {
+      if (destWalk?.geometry || alightStation) {
+        const walkCoords = destWalk?.geometry?.coordinates
+          ?? [alightStation!, mapState.destination.coordinates];
         addSource('walking-dest', {
           type: 'FeatureCollection',
-          features: [{ type: 'Feature', properties: {}, geometry: {
-            type: 'LineString',
-            coordinates: [alightStation, mapState.destination.coordinates]
-          }}]
+          features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: walkCoords } }]
         });
         addLayer({
           id: 'walking-dest-line',
           type: 'line',
           source: 'walking-dest',
-          paint: {
-            'line-color': '#6b7280',
-            'line-width': 3,
-            'line-dasharray': [2, 3],
-            'line-opacity': 0.7
-          }
+          paint: { 'line-color': '#6b7280', 'line-width': 3, 'line-dasharray': [2, 3], 'line-opacity': 0.7 }
         });
       }
     }

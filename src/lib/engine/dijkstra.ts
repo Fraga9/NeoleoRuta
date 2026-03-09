@@ -98,8 +98,6 @@ export function dijkstra(
   const steps = buildSteps(path, adjacency, nodes);
   const totalDuration = dist.get(endId) ?? 0;
 
-  console.log(`[DIJKSTRA] Path found: ${path.length} nodes, ${totalDuration} min, ${steps.length} steps`);
-
   return { steps, totalDuration };
 }
 
@@ -166,6 +164,7 @@ function buildSteps(
         toCoords: toNode.coordinates,
         duration: edge.weight,
         routeId: edge.type === 'transfer' ? undefined : edge.routeId,
+        walkGeometry: edge.geometry,
       });
       i++;
     }

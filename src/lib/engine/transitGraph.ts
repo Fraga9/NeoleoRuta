@@ -34,6 +34,7 @@ export interface GraphEdge {
   weight: number;  // minutes
   type: 'transit' | 'transfer' | 'walk';
   routeId?: RouteId;
+  geometry?: GeoJSON.LineString; // real street path (walk edges only, from OSRM)
 }
 
 export type AdjacencyList = Map<string, GraphEdge[]>;
@@ -103,7 +104,12 @@ export class TransitGraph {
   }
 
   private getStopWeight(routeId: RouteId): number {
-    return routeId === 'ecovia' ? WEIGHTS.BUS_PER_STOP : WEIGHTS.METRO_PER_STOP;
+    // Bus routes (ecovia + all ruta-*) use BUS_PER_STOP (4 min)
+    // Metro lines use METRO_PER_STOP (2 min)
+    if (routeId === 'ecovia' || routeId.startsWith('ruta-')) {
+      return WEIGHTS.BUS_PER_STOP;
+    }
+    return WEIGHTS.METRO_PER_STOP;
   }
 
   private buildFromRoutes() {
@@ -156,7 +162,7 @@ export class TransitGraph {
       }
     }
 
-    console.log(`[GRAPH] Built: ${this.nodes.size} nodes, ${this.edgeCount()} edges`);
+    // Graph built: ${this.nodes.size} nodes, ${this.edgeCount()} edges
   }
 
   private edgeCount(): number {
@@ -187,7 +193,7 @@ export class TransitGraph {
     name: string,
     coords: [number, number],
     tag: string,
-    osrmFn?: (from: [number, number], to: [number, number]) => Promise<{ distance: number; minutes: number; mode: 'walk' | 'transport' } | null>
+    osrmFn?: (from: [number, number], to: [number, number]) => Promise<{ distance: number; minutes: number; mode: 'walk' | 'transport'; geometry?: GeoJSON.LineString } | null>
   ): Promise<string | null> {
     const placeId = `place:${tag}`;
 
@@ -207,17 +213,33 @@ export class TransitGraph {
       return null;
     }
 
+    // Sort by Haversine and limit OSRM calls to prevent rate-limiting.
+    // With 454 stations, many candidates appear within 2500m. We only need
+    // the closest ~10 for OSRM validation — if a station is walkable at 800m
+    // Haversine, there's no benefit to also checking one at 2400m.
+    candidates.sort((a, b) => a.haversine - b.haversine);
+    const MAX_OSRM_CANDIDATES = 10;
+    const osrmCandidates = candidates.slice(0, MAX_OSRM_CANDIDATES);
+    if (candidates.length > MAX_OSRM_CANDIDATES) {
+      // Limiting OSRM calls to closest candidates to avoid rate-limiting
+    }
+
     // Step 2: OSRM validation — separate into walk vs transport buckets
-    const walkStations: { nodeId: string; minutes: number }[] = [];
-    const transportStations: { nodeId: string; minutes: number }[] = [];
+    const walkStations: { nodeId: string; minutes: number; geometry?: GeoJSON.LineString }[] = [];
+    const transportStations: { nodeId: string; minutes: number; geometry?: GeoJSON.LineString }[] = [];
 
     if (osrmFn) {
-      const osrmResults = await Promise.all(
-        candidates.map(async (c) => {
-          const result = await osrmFn(coords, c.node.coordinates);
-          return { ...c, osrm: result };
-        })
-      );
+      // Sequential OSRM calls with small delay to avoid rate-limiting
+      // the public OSRM demo server (which rejects bursts of 30+ requests)
+      const osrmResults: { nodeId: string; haversine: number; node: GraphNode; osrm: Awaited<ReturnType<typeof osrmFn>> }[] = [];
+      for (const c of osrmCandidates) {
+        const result = await osrmFn(coords, c.node.coordinates);
+        osrmResults.push({ ...c, osrm: result });
+        // Small delay between calls to avoid overwhelming the demo server
+        if (osrmCandidates.length > 5) {
+          await new Promise(r => setTimeout(r, 100));
+        }
+      }
 
       for (const r of osrmResults) {
         if (!r.osrm) {
@@ -242,22 +264,16 @@ export class TransitGraph {
           && ratio > WEIGHTS.MAX_OSRM_RATIO;
 
         if (tooFarAbsolute || likelyObstacle) {
-          const reason = tooFarAbsolute
-            ? `OSRM ${r.osrm.distance}m > ${WEIGHTS.MAX_OSRM_TRANSPORT}m limit`
-            : `OSRM ${r.osrm.distance}m vs Haversine ${Math.round(r.haversine)}m (ratio ${ratio.toFixed(1)} > ${WEIGHTS.MAX_OSRM_RATIO})`;
-          console.log(`[GRAPH] ❌ Rejected ${r.nodeId}: ${reason}`);
           continue;
         }
 
         // Bucket into walk or transport tier
         if (r.osrm.distance <= WEIGHTS.MAX_OSRM_WALK) {
           const minutes = Math.ceil(r.osrm.distance / WEIGHTS.WALK_SPEED);
-          walkStations.push({ nodeId: r.nodeId, minutes });
-          console.log(`[GRAPH] 🚶 Walk ${r.nodeId}: ${r.osrm.distance}m, ${minutes} min`);
+          walkStations.push({ nodeId: r.nodeId, minutes, geometry: r.osrm.geometry });
         } else {
           const minutes = Math.ceil(r.osrm.distance / WEIGHTS.TAXI_SPEED);
-          transportStations.push({ nodeId: r.nodeId, minutes });
-          console.log(`[GRAPH] 🚕 Transport ${r.nodeId}: ${r.osrm.distance}m, ${minutes} min`);
+          transportStations.push({ nodeId: r.nodeId, minutes, geometry: r.osrm.geometry });
         }
       }
     } else {
@@ -281,13 +297,17 @@ export class TransitGraph {
       return null;
     }
 
-    console.log(`[GRAPH] ${name}: using ${selectedMode} edges (${walkStations.length} walk, ${transportStations.length} transport candidates)`);
+    // Using ${selectedMode} edges: ${walkStations.length} walk, ${transportStations.length} transport
 
     this.addNode({ id: placeId, name, coordinates: coords, type: 'place' });
 
-    for (const { nodeId, minutes } of selectedStations) {
-      this.addEdge({ from: placeId, to: nodeId, weight: minutes, type: 'walk' });
-      this.addEdge({ from: nodeId, to: placeId, weight: minutes, type: 'walk' });
+    for (const { nodeId, minutes, geometry } of selectedStations) {
+      this.addEdge({ from: placeId, to: nodeId, weight: minutes, type: 'walk', geometry });
+      // Reverse geometry for the return edge
+      const reverseGeometry = geometry
+        ? { ...geometry, coordinates: [...geometry.coordinates].reverse() }
+        : undefined;
+      this.addEdge({ from: nodeId, to: placeId, weight: minutes, type: 'walk', geometry: reverseGeometry });
     }
 
     return placeId;
@@ -327,9 +347,11 @@ export class TransitGraph {
   disconnectPlace(placeId: string) {
     this.nodes.delete(placeId);
     this.adjacency.delete(placeId);
-    for (const edges of this.adjacency.values()) {
-      const idx = edges.findIndex(e => e.to === placeId);
-      if (idx !== -1) edges.splice(idx, 1);
+    for (const [key, edges] of this.adjacency) {
+      const filtered = edges.filter(e => e.to !== placeId);
+      if (filtered.length !== edges.length) {
+        this.adjacency.set(key, filtered);
+      }
     }
   }
 
@@ -367,8 +389,6 @@ export class TransitGraph {
 
     if (issues.length > 0) {
       console.warn('[GRAPH VALIDATION]', issues);
-    } else {
-      console.log('[GRAPH VALIDATION] ✅ All checks passed');
     }
 
     return { valid: issues.length === 0, issues };

@@ -9,6 +9,7 @@ import { generateObject, generateText } from 'ai';
 import { env } from '$env/dynamic/private';
 import { planRoute, planRouteFromCoords } from '$lib/server/planRoute';
 import { haversineDistance } from '$lib/engine/transitGraph';
+import { transitRoutes } from '$lib/data/transitRoutes';
 import { z } from 'zod';
 import { json } from '@sveltejs/kit';
 
@@ -78,8 +79,18 @@ Mensaje: "${message}"`,
         return `${i + 1}. 🚶 Caminar de "${s.from}" a "${s.to}" (~${s.duration} min)`;
       }
       if (s.type === 'transit') {
-        const lineName = s.routeId === 'ecovia' ? 'Ecovía' : `Metro Línea ${s.routeId?.split('-')[1]}`;
-        return `${i + 1}. 🚇 Tomar ${lineName} desde "${s.from}" hasta "${s.to}" (${s.stopsCount} paradas, ~${s.duration} min)`;
+        let lineName: string;
+        if (s.routeId === 'ecovia') {
+          lineName = 'Ecovía';
+        } else if (s.routeId?.startsWith('ruta-')) {
+          // Bus routes: "ruta-13-c4-ida" → "Ruta 13 C4"
+          const parts = s.routeId.replace('ruta-', '').replace(/-ida$/, '').replace(/-vuelta$/, '').split('-');
+          lineName = `Ruta ${parts.map((p: string) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')} (camión)`;
+        } else {
+          lineName = `Metro Línea ${s.routeId?.split('-')[1]}`;
+        }
+        const icon = s.routeId?.startsWith('ruta-') ? '🚌' : '🚇';
+        return `${i + 1}. ${icon} Tomar ${lineName} desde "${s.from}" hasta "${s.to}" (${s.stopsCount} paradas, ~${s.duration} min)`;
       }
       if (s.type === 'transfer') {
         return `${i + 1}. 🔄 Transbordo en "${s.from}" (~${s.duration} min)`;

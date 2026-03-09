@@ -160,6 +160,13 @@
     for (const station of plan.alightingStations) {
       mapStore.addStationHighlight(station, 'alight');
     }
+
+    // Push real street walk geometries from OSRM (if available)
+    for (const step of plan.steps) {
+      if (step.type === 'walk' && step.walkGeometry) {
+        mapStore.addWalkSegment(step.walkGeometry);
+      }
+    }
   }
 
   function getMessageText(message: any): string {

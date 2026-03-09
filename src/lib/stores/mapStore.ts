@@ -6,12 +6,17 @@ export interface JourneyPoint {
   coordinates: [number, number]; // [lng, lat]
 }
 
+export interface WalkSegment {
+  geometry: GeoJSON.LineString;
+}
+
 export interface MapState {
   routes: RouteId[];
   origin: JourneyPoint | null;
   destination: JourneyPoint | null;
   boardingStations: string[];   // station names to highlight as "board here"
   alightingStations: string[];  // station names to highlight as "get off here"
+  walkSegments: WalkSegment[];  // real street paths for walk legs (from OSRM)
 }
 
 const initialState: MapState = {
@@ -20,6 +25,7 @@ const initialState: MapState = {
   destination: null,
   boardingStations: [],
   alightingStations: [],
+  walkSegments: [],
 };
 
 function createMapStore() {
@@ -50,6 +56,9 @@ function createMapStore() {
         boardingStations: type === 'board' ? [...state.boardingStations, stationName] : state.boardingStations,
         alightingStations: type === 'alight' ? [...state.alightingStations, stationName] : state.alightingStations,
       }));
+    },
+    addWalkSegment: (geometry: GeoJSON.LineString) => {
+      update(state => ({ ...state, walkSegments: [...state.walkSegments, { geometry }] }));
     },
     clearRoutes: () => set(initialState),
   };

@@ -46,9 +46,9 @@ export interface PlanError {
 async function osrmValidator(
   from: [number, number],
   to: [number, number]
-): Promise<{ distance: number; minutes: number; mode: 'walk' | 'transport' } | null> {
+): Promise<{ distance: number; minutes: number; mode: 'walk' | 'transport'; geometry?: GeoJSON.LineString } | null> {
   const segment = await getRouteSegment(from, to);
-  return { distance: segment.distance, minutes: segment.minutes, mode: segment.mode };
+  return { distance: segment.distance, minutes: segment.minutes, mode: segment.mode, geometry: segment.geometry };
 }
 
 // ── Shared plan builder ──

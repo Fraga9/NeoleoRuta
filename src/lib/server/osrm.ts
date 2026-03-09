@@ -36,16 +36,23 @@ async function osrmDistance(
       signal: AbortSignal.timeout(5000),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.warn(`[OSRM] HTTP ${response.status} for ${profile} request`);
+      return null;
+    }
 
     const data = await response.json();
-    if (data.code !== 'Ok' || !data.routes?.[0]) return null;
+    if (data.code !== 'Ok' || !data.routes?.[0]) {
+      console.warn(`[OSRM] API error: ${data.code}, message: ${data.message || 'none'}`);
+      return null;
+    }
 
     return {
       distance: data.routes[0].distance,  // meters (accurate)
       geometry: data.routes[0].geometry,   // GeoJSON LineString
     };
-  } catch {
+  } catch (e) {
+    console.warn(`[OSRM] Fetch error: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
 }
