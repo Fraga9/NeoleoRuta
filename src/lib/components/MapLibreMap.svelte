@@ -58,13 +58,32 @@
     return best;
   }
 
+  /**
+   * Find the (board, alight) pair for a route using index-matched lookup.
+   * boardingStations[i] and alightingStations[i] are always paired (same transit step).
+   * Independent `find` breaks for multi-leg trips where a station (e.g. "Sendero")
+   * appears in both arrays at different indices.
+   */
+  function findSegmentPair(routeId: RouteId): { board: string; alight: string } | null {
+    const route = transitRoutes[routeId];
+    for (let i = 0; i < mapState.boardingStations.length; i++) {
+      const b = mapState.boardingStations[i];
+      const a = mapState.alightingStations[i];
+      if (route.stations.some(s => s.name === b) && route.stations.some(s => s.name === a)) {
+        return { board: b, alight: a };
+      }
+    }
+    return null;
+  }
+
   /** Slice the route GeoJSON to only the boarding→alighting segment. Falls back to full line. */
   function getSegmentGeoJSON(routeId: RouteId): GeoJSON.FeatureCollection {
     const route = transitRoutes[routeId];
     const fullCoords = (route.line.features[0].geometry as GeoJSON.LineString).coordinates;
 
-    const boardStation = mapState.boardingStations.find(name => route.stations.some(s => s.name === name));
-    const alightStation = mapState.alightingStations.find(name => route.stations.some(s => s.name === name));
+    const pair = findSegmentPair(routeId);
+    if (!pair) return route.line;
+    const { board: boardStation, alight: alightStation } = pair;
 
     if (!boardStation || !alightStation) return route.line;
 
@@ -94,83 +113,143 @@
     mapState.routes.forEach((id) => {
       if (!id || !transitRoutes[id]) return;
       const route = transitRoutes[id];
+      const isBus = id.startsWith('ruta-');
 
-      // Line — draw only the boarded segment (board→alight), full line as fallback
+      // ── Line: only the boarded segment ──
       const segmentGeoJSON = getSegmentGeoJSON(id);
       addSource(`source-${id}`, segmentGeoJSON);
+
+      // Casing (white halo for Material depth)
+      addLayer({
+        id: `layer-casing-${id}`,
+        type: 'line',
+        source: `source-${id}`,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': isBus ? 9 : 11, 'line-opacity': 0.5 }
+      });
+
+      // Colored route line
       addLayer({
         id: `layer-${id}`,
         type: 'line',
         source: `source-${id}`,
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': route.color, 'line-width': 5, 'line-opacity': 0.85 }
+        paint: { 'line-color': route.color, 'line-width': isBus ? 5 : 6, 'line-opacity': 0.95 }
       });
 
-      // Station points
-      const stationFeatures: GeoJSON.Feature[] = route.stations.map(s => {
+      // ── Stations: clip to boarded segment only (use paired index lookup) ──
+      const pair = findSegmentPair(id);
+      let segStations = route.stations;
+      if (pair) {
+        const bIdx = route.stations.findIndex(s => s.name === pair.board);
+        const aIdx = route.stations.findIndex(s => s.name === pair.alight);
+        if (bIdx !== -1 && aIdx !== -1) {
+          segStations = route.stations.slice(Math.min(bIdx, aIdx), Math.max(bIdx, aIdx) + 1);
+        }
+      }
+
+      const stationFeatures: GeoJSON.Feature[] = segStations.map(s => {
         const isBoarding = mapState.boardingStations.includes(s.name);
         const isAlighting = mapState.alightingStations.includes(s.name);
         const isTransfer = !!(s.transfer && s.transfer.length > 0);
+        // Anonymous bus stops (e.g. "R226 V P22") should not show labels
+        const isNamed = !/^R\d+\s/.test(s.name);
         return {
           type: 'Feature' as const,
-          properties: { name: s.name, isTransfer, isBoarding, isAlighting },
+          properties: { name: s.name, isTransfer, isBoarding, isAlighting, isNamed },
           geometry: { type: 'Point' as const, coordinates: s.coordinates }
         };
       });
 
       addSource(`stations-src-${id}`, { type: 'FeatureCollection', features: stationFeatures });
 
-      // Normal station dots
+      // Soft glow behind boarding/alighting markers
+      addLayer({
+        id: `stations-glow-${id}`,
+        type: 'circle',
+        source: `stations-src-${id}`,
+        filter: ['any', ['get', 'isBoarding'], ['get', 'isAlighting']],
+        paint: {
+          'circle-radius': 20,
+          'circle-color': ['case', ['get', 'isBoarding'], '#10b981', '#ef4444'],
+          'circle-opacity': 0.15,
+          'circle-blur': 1,
+        }
+      });
+
+      // Station dots
       addLayer({
         id: `stations-${id}`,
         type: 'circle',
         source: `stations-src-${id}`,
         paint: {
           'circle-radius': ['case',
-            ['any', ['get', 'isBoarding'], ['get', 'isAlighting']], 8,
+            ['any', ['get', 'isBoarding'], ['get', 'isAlighting']], 11,
             ['get', 'isTransfer'], 7,
-            5
+            4
           ],
           'circle-color': ['case',
-            ['get', 'isBoarding'], '#22c55e',   // green for boarding
-            ['get', 'isAlighting'], '#ef4444',   // red for alighting
+            ['get', 'isBoarding'], '#10b981',
+            ['get', 'isAlighting'], '#ef4444',
             '#ffffff'
           ],
           'circle-stroke-color': ['case',
-            ['get', 'isBoarding'], '#16a34a',
-            ['get', 'isAlighting'], '#dc2626',
+            ['get', 'isBoarding'], '#065f46',
+            ['get', 'isAlighting'], '#991b1b',
             route.color
           ],
-          'circle-stroke-width': 2.5,
+          'circle-stroke-width': ['case',
+            ['any', ['get', 'isBoarding'], ['get', 'isAlighting']], 3,
+            1.5
+          ],
         }
       });
 
-      // Transfer indicator ring
+      // Outer pulse ring for boarding/alighting (M3 tonal container)
+      addLayer({
+        id: `stations-ring-${id}`,
+        type: 'circle',
+        source: `stations-src-${id}`,
+        filter: ['any', ['get', 'isBoarding'], ['get', 'isAlighting']],
+        paint: {
+          'circle-radius': 17,
+          'circle-color': 'transparent',
+          'circle-stroke-color': ['case', ['get', 'isBoarding'], '#10b981', '#ef4444'],
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': 0.35,
+        }
+      });
+
+      // Transfer ring (amber — only for transfer stops not already boarding/alighting)
       addLayer({
         id: `transfers-${id}`,
         type: 'circle',
         source: `stations-src-${id}`,
-        filter: ['==', ['get', 'isTransfer'], true],
+        filter: ['all',
+          ['==', ['get', 'isTransfer'], true],
+          ['!', ['any', ['get', 'isBoarding'], ['get', 'isAlighting']]]
+        ],
         paint: {
-          'circle-radius': 11,
+          'circle-radius': 12,
           'circle-color': 'transparent',
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2,
+          'circle-stroke-color': '#f59e0b',
+          'circle-stroke-width': 2.5,
         }
       });
 
-      // Station labels
+      // Labels — only named stations + boarding/alighting (hide "R226 V P22" etc.)
       addLayer({
         id: `labels-${id}`,
         type: 'symbol',
         source: `stations-src-${id}`,
+        filter: ['any', ['get', 'isBoarding'], ['get', 'isAlighting'], ['get', 'isNamed']],
         layout: {
           'text-field': ['get', 'name'],
           'text-size': ['case',
             ['any', ['get', 'isBoarding'], ['get', 'isAlighting']], 13,
             11
           ],
-          'text-offset': [0, 1.6],
+          'text-offset': [0, 1.9],
           'text-anchor': 'top',
           'text-font': ['Open Sans Bold', 'Open Sans Regular'],
           'text-optional': true,
@@ -178,17 +257,18 @@
         },
         paint: {
           'text-color': ['case',
-            ['get', 'isBoarding'], '#16a34a',
-            ['get', 'isAlighting'], '#dc2626',
-            '#333'
+            ['get', 'isBoarding'], '#065f46',
+            ['get', 'isAlighting'], '#991b1b',
+            '#1c1c2e'
           ],
-          'text-halo-color': '#fff',
-          'text-halo-width': 1.5,
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 2,
         }
       });
 
-      const coords = (route.line.features[0].geometry as any).coordinates;
-      if (coords) allCoords = allCoords.concat(coords);
+      // fitBounds uses segment coords, not the full route line
+      const segCoords = (segmentGeoJSON.features[0]?.geometry as GeoJSON.LineString)?.coordinates;
+      if (segCoords) allCoords = allCoords.concat(segCoords);
     });
 
     // ── ORIGIN & DESTINATION MARKERS ──
@@ -215,7 +295,8 @@
           id: 'walking-origin-line',
           type: 'line',
           source: 'walking-origin',
-          paint: { 'line-color': '#6b7280', 'line-width': 3, 'line-dasharray': [2, 3], 'line-opacity': 0.7 }
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#6366f1', 'line-width': 3, 'line-dasharray': [1.5, 2.5], 'line-opacity': 0.75 }
         });
       }
     }
@@ -245,7 +326,8 @@
           id: 'walking-dest-line',
           type: 'line',
           source: 'walking-dest',
-          paint: { 'line-color': '#6b7280', 'line-width': 3, 'line-dasharray': [2, 3], 'line-opacity': 0.7 }
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#6366f1', 'line-width': 3, 'line-dasharray': [1.5, 2.5], 'line-opacity': 0.75 }
         });
       }
     }

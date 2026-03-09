@@ -34,7 +34,8 @@ export function dijkstra(
   adjacency: AdjacencyList,
   nodes: Map<string, GraphNode>,
   startId: string,
-  endId: string
+  endId: string,
+  options?: { excludeRoutes?: RouteId[] }
 ): DijkstraResult | null {
   // Distance map
   const dist = new Map<string, number>();
@@ -71,6 +72,7 @@ export function dijkstra(
     const edges = adjacency.get(current.id) || [];
     for (const edge of edges) {
       if (visited.has(edge.to)) continue;
+      if (options?.excludeRoutes && edge.routeId && options.excludeRoutes.includes(edge.routeId)) continue;
       const newDist = (dist.get(current.id) ?? Infinity) + edge.weight;
       if (newDist < (dist.get(edge.to) ?? Infinity)) {
         dist.set(edge.to, newDist);

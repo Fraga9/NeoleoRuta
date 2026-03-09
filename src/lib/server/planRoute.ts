@@ -58,7 +58,7 @@ async function buildPlan(
   originCoords: [number, number],
   destName: string,
   destCoords: [number, number]
-): Promise<{ plan: RoutePlan | null; error: PlanError | null }> {
+): Promise<{ plan: RoutePlan | null; alternatives: RoutePlan[]; error: PlanError | null }> {
 
   // Connect places to graph (async — OSRM validates walk edges)
   const originId = await transitGraph.connectPlace(originName, originCoords, 'origin', osrmValidator);
@@ -67,22 +67,43 @@ async function buildPlan(
   // Handle "too far" with taxi suggestions
   if (!originId) {
     if (destId) transitGraph.disconnectPlace(destId);
-    return {
-      plan: null,
-      error: buildTooFarError(originName, originCoords),
-    };
+    return { plan: null, alternatives: [], error: buildTooFarError(originName, originCoords) };
   }
 
   if (!destId) {
     transitGraph.disconnectPlace(originId);
-    return {
-      plan: null,
-      error: buildTooFarError(destName, destCoords),
-    };
+    return { plan: null, alternatives: [], error: buildTooFarError(destName, destCoords) };
   }
 
-  // Dijkstra (weights are already OSRM-accurate from connectPlace)
+  // Primary Dijkstra
   const result = dijkstra(transitGraph.adjacency, transitGraph.nodes, originId, destId);
+
+  // Alternatives: while origin/dest are still connected, exclude the primary first-leg
+  // route family (ida+vuelta) to force a different path
+  const altResults: typeof result[] = [];
+  if (result) {
+    const primaryFirstTransit = result.steps.find(s => s.type === 'transit');
+    if (primaryFirstTransit?.routeId) {
+      // Exclude both IDA and VUELTA of the same route to avoid trivial variants
+      const baseId = primaryFirstTransit.routeId.replace(/-ida$/, '').replace(/-vuelta$/, '');
+      const excludeFamily = [
+        `${baseId}-ida`, `${baseId}-vuelta`, primaryFirstTransit.routeId
+      ].filter((v, i, a) => a.indexOf(v) === i) as RouteId[];
+
+      const alt = dijkstra(transitGraph.adjacency, transitGraph.nodes, originId, destId,
+        { excludeRoutes: excludeFamily });
+
+      // Only keep if it's a genuinely different first line and not much slower (≤25% longer)
+      if (alt) {
+        const altFirstTransit = alt.steps.find(s => s.type === 'transit');
+        const isDifferent = altFirstTransit?.routeId &&
+          altFirstTransit.routeId.replace(/-ida$/, '').replace(/-vuelta$/, '') !== baseId;
+        if (isDifferent && alt.totalDuration <= result.totalDuration * 1.25) {
+          altResults.push(alt);
+        }
+      }
+    }
+  }
 
   transitGraph.disconnectPlace(originId);
   transitGraph.disconnectPlace(destId);
@@ -90,36 +111,39 @@ async function buildPlan(
   if (!result) {
     return {
       plan: null,
+      alternatives: [],
       error: { code: 'NO_ROUTE', message: 'No encontré una ruta de transporte público entre esos dos puntos.' },
     };
   }
 
-  // Build plan
-  const linesUsed: RouteId[] = [];
-  const boardingStations: string[] = [];
-  const alightingStations: string[] = [];
-
-  for (const step of result.steps) {
-    if (step.type === 'transit' && step.routeId) {
-      if (!linesUsed.includes(step.routeId)) linesUsed.push(step.routeId);
-      boardingStations.push(step.from);
-      alightingStations.push(step.to);
+  const buildPlanFromResult = (r: NonNullable<typeof result>): RoutePlan => {
+    const linesUsed: RouteId[] = [];
+    const boardingStations: string[] = [];
+    const alightingStations: string[] = [];
+    for (const step of r.steps) {
+      if (step.type === 'transit' && step.routeId) {
+        if (!linesUsed.includes(step.routeId)) linesUsed.push(step.routeId);
+        boardingStations.push(step.from);
+        alightingStations.push(step.to);
+      }
     }
-  }
-
-  const plan: RoutePlan = {
-    origin: { name: originName, coords: originCoords },
-    destination: { name: destName, coords: destCoords },
-    totalDuration: result.totalDuration,
-    steps: result.steps,
-    linesUsed,
-    boardingStations,
-    alightingStations,
+    return {
+      origin: { name: originName, coords: originCoords },
+      destination: { name: destName, coords: destCoords },
+      totalDuration: r.totalDuration,
+      steps: r.steps,
+      linesUsed,
+      boardingStations,
+      alightingStations,
+    };
   };
 
-  console.log(`[ROUTING] ✅ ${plan.totalDuration} min, ${plan.steps.length} steps, lines: [${linesUsed.join(', ')}]`);
+  const plan = buildPlanFromResult(result);
+  const alternatives = altResults.map(buildPlanFromResult);
 
-  return { plan, error: null };
+  console.log(`[ROUTING] ✅ ${plan.totalDuration} min, lines: [${plan.linesUsed.join(', ')}], alternatives: ${alternatives.length}`);
+
+  return { plan, alternatives, error: null };
 }
 
 /**
@@ -162,21 +186,21 @@ function buildTooFarError(placeName: string, placeCoords: [number, number]): Pla
 export async function planRoute(
   originName: string,
   destinationName: string
-): Promise<{ plan: RoutePlan | null; error: PlanError | null }> {
+): Promise<{ plan: RoutePlan | null; alternatives: RoutePlan[]; error: PlanError | null }> {
   console.log(`[ROUTING] Planning: "${originName}" → "${destinationName}"`);
 
   if (originName.toLowerCase().trim() === destinationName.toLowerCase().trim()) {
-    return { plan: null, error: { code: 'SAME_PLACE', message: '¡Ya estás ahí!' } };
+    return { plan: null, alternatives: [], error: { code: 'SAME_PLACE', message: '¡Ya estás ahí!' } };
   }
 
   const originGeo = await geocode(originName);
   if (!originGeo.coords) {
-    return { plan: null, error: { code: 'GEOCODE_ORIGIN', message: `No pude encontrar "${originName}" en el mapa.` } };
+    return { plan: null, alternatives: [], error: { code: 'GEOCODE_ORIGIN', message: `No pude encontrar "${originName}" en el mapa.` } };
   }
 
   const destGeo = await geocode(destinationName);
   if (!destGeo.coords) {
-    return { plan: null, error: { code: 'GEOCODE_DEST', message: `No pude encontrar "${destinationName}" en el mapa.` } };
+    return { plan: null, alternatives: [], error: { code: 'GEOCODE_DEST', message: `No pude encontrar "${destinationName}" en el mapa.` } };
   }
 
   return buildPlan(originName, originGeo.coords, destinationName, destGeo.coords);
@@ -186,12 +210,12 @@ export async function planRouteFromCoords(
   originName: string,
   originCoords: [number, number],
   destinationName: string
-): Promise<{ plan: RoutePlan | null; error: PlanError | null }> {
+): Promise<{ plan: RoutePlan | null; alternatives: RoutePlan[]; error: PlanError | null }> {
   console.log(`[ROUTING] Planning from GPS: [${originCoords}] → "${destinationName}"`);
 
   const destGeo = await geocode(destinationName);
   if (!destGeo.coords) {
-    return { plan: null, error: { code: 'GEOCODE_DEST', message: `No pude encontrar "${destinationName}" en el mapa.` } };
+    return { plan: null, alternatives: [], error: { code: 'GEOCODE_DEST', message: `No pude encontrar "${destinationName}" en el mapa.` } };
   }
 
   return buildPlan(originName, originCoords, destinationName, destGeo.coords);

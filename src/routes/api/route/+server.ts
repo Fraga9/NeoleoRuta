@@ -60,12 +60,12 @@ Mensaje: "${message}"`,
     }
 
     if (result.error || !result.plan) {
-      // If there's a taxi suggestion, return the error message as nlgText
       const nlgText = result.error?.message || 'No se pudo calcular la ruta.';
       return json({ plan: null, nlgText, error: result.error });
     }
 
     const plan = result.plan;
+    const alternatives = result.alternatives ?? [];
 
     // Step 3: NLG — generate text from the route plan
     // Detect transport-mode walk steps (>1.5km Haversine = taxi, not walking)
@@ -109,10 +109,22 @@ Mensaje: "${message}"`,
         ? '\nNOTA: Los tramos marcados con 🚕 son demasiado largos para caminar. Recomienda taxi, Uber o Didi para esas partes.'
         : '';
 
+      // Describe alternatives concisely for the NLG prompt
+      const altSummary = alternatives.map((alt, i) => {
+        const firstTransit = alt.steps.find((s: any) => s.type === 'transit');
+        const lineName = firstTransit?.routeId
+          ? (transitRoutes[firstTransit.routeId]?.label ?? firstTransit.routeId)
+          : '?';
+        return `- Opción ${i + 2}: ${lineName} (~${alt.totalDuration} min)`;
+      }).join('\n');
+
+      const JERGA = `JERGA REGIOMONTANA — úsala de forma NATURAL (1-2 frases por respuesta, sin encadenar):
+"De volon pin pon"=rápido/al tiro | "En corto"=en resumen | "Simón"=sí/claro | "La neta"=la verdad | "Órale pues"=ándale | "¡Échale!"=vamos | "Pos"=pues | "Nomás"=solo | "Está cañón"=está difícil | "Pilas"=listo/alerta | "La raza"=la gente | "¡Ya estás!"=ya quedó | "Gacho"=malo/inconveniente | "Chido/a"=cool | "No te arrugues"=échale ganas | "¡Hay te wacho!"=hasta luego`;
+
       const { text } = await generateText({
         model: google('gemini-2.5-flash'),
         prompt: `Eres "RegioRuta Inteligente", asistente de transporte en Monterrey, NL.
-Tono: amable, con modismos locales ligeros ("camión", "feria", "qué onda").
+${JERGA}
 
 Explica esta ruta calculada de forma clara y breve. NO inventes otra ruta, describe EXACTAMENTE esta:
 
@@ -122,17 +134,17 @@ Tiempo total: ~${plan.totalDuration} minutos
 Pasos:
 ${routeDescription}
 ${transportTip}
+${altSummary ? `\nAlternativas disponibles (menciónalas brevemente al final):\n${altSummary}` : ''}
 
 Escribe la explicación en 1-2 párrafos cortos. Sé conciso.`,
       });
       nlgText = text;
     } catch (nlgError) {
       console.error('[ROUTE NLG] Gemini failed, using fallback text:', nlgError);
-      // Fallback: return the structured route description as plain text
       nlgText = `Ruta de ${plan.origin.name} a ${plan.destination.name} (~${plan.totalDuration} min):\n\n${routeDescription}`;
     }
 
-    return json({ plan, nlgText, error: null });
+    return json({ plan, alternatives, nlgText, error: null });
   } catch (e) {
     console.error('[ROUTE API] Error:', e);
     return json({ plan: null, nlgText: null, error: 'Error interno calculando la ruta.' });

@@ -127,16 +127,25 @@ export class TransitGraph {
       }
     }
 
-    // PASS 2: Add transit edges (bidirectional)
+    // PASS 2: Add transit edges
+    // Metro and Ecovía are bidirectional — trains run simultaneously in both directions.
+    // Bus routes (ruta-*) are unidirectional — each physical bus only goes one way.
+    // IDA and VUELTA are separate routes that together cover both directions.
+    // Bidirectional edges on bus routes would let Dijkstra travel a route "backwards",
+    // which is physically impossible (the bus at stop P22 going northbound cannot take
+    // you south just because the graph says the edge is reversible).
     for (const [routeId, route] of Object.entries(transitRoutes) as [RouteId, typeof transitRoutes[RouteId]][]) {
       const weight = this.getStopWeight(routeId);
+      const bidirectional = !routeId.startsWith('ruta-'); // metro + ecovia only
 
       for (let i = 0; i < route.stations.length - 1; i++) {
         const currId = this.nodeId(routeId, route.stations[i].name);
         const nextId = this.nodeId(routeId, route.stations[i + 1].name);
 
         this.addEdge({ from: currId, to: nextId, weight, type: 'transit', routeId });
-        this.addEdge({ from: nextId, to: currId, weight, type: 'transit', routeId });
+        if (bidirectional) {
+          this.addEdge({ from: nextId, to: currId, weight, type: 'transit', routeId });
+        }
       }
     }
 
