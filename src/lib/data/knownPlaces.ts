@@ -2,9 +2,9 @@
 // so Gemini doesn't have to provide them (it fails with too many numeric params)
 
 export const knownPlaces: Record<string, [number, number]> = {
-  // Landmarks
+  // ── Landmarks ──
   'macroplaza':             [-100.3099, 25.6692],
-  'estadio bbva':           [-100.2456, 25.6780],
+  'estadio bbva':           [-100.2430, 25.6697],
   'hospital metropolitano': [-100.2773, 25.7129],
   'parque fundidora':       [-100.2881, 25.6836],
   'centro de monterrey':    [-100.3161, 25.6866],
@@ -12,14 +12,50 @@ export const knownPlaces: Record<string, [number, number]> = {
   'barrio antiguo':         [-100.3050, 25.6700],
   'paseo santa lucía':      [-100.3000, 25.6720],
   'arena monterrey':        [-100.3050, 25.6860],
-  'tecnológico de monterrey': [-100.2900, 25.6510],
-  'uanl':                   [-100.3083, 25.7244],
   'central de autobuses':   [-100.3244, 25.6869],
   'aeropuerto monterrey':   [-100.1070, 25.7786],
-  'plaza la silla':         [-100.2350, 25.6450],
+  'palacio de gobierno':    [-100.3105, 25.6697],
+
+  // ── Shopping / Commercial ──
   'galerías monterrey':     [-100.3540, 25.6670],
+  'galerías valle oriente': [-100.3502, 25.6519],
+  'fashion drive':          [-100.3398, 25.6470],
+  'plaza la silla':         [-100.2350, 25.6450],
   'citadel':                [-100.2456, 25.6750],
   'plaza fiesta san agustín': [-100.3630, 25.6610],
+  'paseo la fe':            [-100.2085, 25.6978],
+  'plaza cumbres':          [-100.3798, 25.7506],
+
+  // ── Universities ──
+  'tecnológico de monterrey': [-100.2900, 25.6510],
+  'tec de monterrey':       [-100.2900, 25.6510],
+  'uanl':                   [-100.3083, 25.7244],
+  'uanl méderos':           [-100.3996, 25.6427],
+  'uanl fime':              [-100.3573, 25.7263],
+  'udem':                   [-100.3597, 25.6605],
+  'universidad regiomontana': [-100.3120, 25.6770],
+
+  // ── Hospitals ──
+  'hospital universitario': [-100.3480, 25.6890],
+  'hospital san josé tec':  [-100.3048, 25.6547],
+  'hospital ángeles':       [-100.3358, 25.6485],
+  'christus muguerza':      [-100.3089, 25.6657],
+
+  // ── Cultural / Parks ──
+  'museo marco':            [-100.3104, 25.6665],
+  'planetario alfa':        [-100.3680, 25.6549],
+  'bioparque estrella':     [-100.2940, 25.6150],
+  'parque niños héroes':    [-100.3380, 25.6840],
+
+  // ── Neighborhoods / Municipal Centers ──
+  'san pedro garza garcía': [-100.4020, 25.6590],
+  'santa catarina':         [-100.4580, 25.6730],
+  'guadalupe centro':       [-100.2590, 25.6770],
+  'apodaca centro':         [-100.1880, 25.7810],
+  'escobedo centro':        [-100.3150, 25.7910],
+  'contry':                 [-100.3050, 25.6420],
+  'cumbres':                [-100.3850, 25.7460],
+  'san jerónimo':           [-100.4160, 25.6410],
   
   // Metro stations (same coords as in transitRoutes)
   'talleres':               [-100.36528, 25.75389],
