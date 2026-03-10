@@ -7,31 +7,13 @@
 
   marked.setOptions({ breaks: true });
 
-  // ── User geolocation ──
-  let userLocation = $state<[number, number] | null>(null);
-  let locationStatus = $state<'idle' | 'requesting' | 'granted' | 'denied'>('idle');
-
-  function requestLocation() {
-    if (!navigator.geolocation) {
-      locationStatus = 'denied';
-      return;
-    }
-    locationStatus = 'requesting';
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        userLocation = [pos.coords.longitude, pos.coords.latitude];
-        locationStatus = 'granted';
-        console.log('[GEO] User location:', userLocation);
-      },
-      () => { locationStatus = 'denied'; },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+  interface Props {
+    externalUserLocation: [number, number] | null;
+    externalLocationStatus: 'idle' | 'requesting' | 'granted' | 'denied';
+    onLocationRequest: () => void;
   }
 
-  // Ask for location on mount
-  $effect(() => {
-    if (locationStatus === 'idle') requestLocation();
-  });
+  let { externalUserLocation: userLocation, externalLocationStatus: locationStatus, onLocationRequest: requestLocation } = $props<Props>();
 
   // ── Collapse state ──
   let isCollapsed = $state(false);
