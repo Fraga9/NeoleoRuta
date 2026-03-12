@@ -173,7 +173,7 @@ export const knownPlaces: Record<string, [number, number]> = {
   'penitenciaría':          [-100.34250, 25.72333],
   'alfonso reyes':          [-100.34250, 25.71611],
   'mitras':                 [-100.34250, 25.70556],
-  'simón bolívar':          [-100.34250, 25.70556],
+  'simón bolívar':          [-100.33917, 25.69889],
   'hospital':               [-100.34417, 25.69194],
   'edison':                 [-100.33361, 25.68694],
   'central':                [-100.32444, 25.68694],
@@ -210,13 +210,24 @@ export const knownPlaces: Record<string, [number, number]> = {
   'valle soleado':          [-100.18731, 25.72461],
 };
 
+function normalizeAccents(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 export function resolveCoordinates(name: string): [number, number] | null {
   const key = name.toLowerCase().trim();
   if (knownPlaces[key]) return knownPlaces[key];
-  
+
+  // Accent-insensitive exact match
+  const keyNorm = normalizeAccents(key);
+  for (const [placeName, coords] of Object.entries(knownPlaces)) {
+    if (normalizeAccents(placeName) === keyNorm) return coords;
+  }
+
   // Fuzzy match: check if the key is contained in any known place name
   for (const [placeName, coords] of Object.entries(knownPlaces)) {
-    if (placeName.includes(key) || key.includes(placeName)) {
+    const placeNorm = normalizeAccents(placeName);
+    if (placeNorm.includes(keyNorm) || keyNorm.includes(placeNorm)) {
       return coords;
     }
   }

@@ -1,20 +1,24 @@
 /**
- * Route Planner — orchestrates geocoding + graph + OSRM + Dijkstra.
+ * Route Planner — orchestrates geocoding + RAPTOR + OSRM enrichment.
  *
  * Flow:
- * 1. Geocode origin/destination → coordinates
- * 2. Connect to graph (with OSRM validation — rejects mountains/obstacles)
- * 3. Dijkstra pathfinding (weights already OSRM-accurate)
- * 4. Build RoutePlan
+ * 1. Geocode origin/destination → coordinates (parallel)
+ * 2. Find access/egress stops (Haversine, instant)
+ * 3. RAPTOR pathfinding (Pareto-optimal, ~10ms)
+ * 4. Enrich walk geometry via OSRM (2-4 calls, non-critical)
+ * 5. Build RoutePlan
  *
  * If user is too far from any station → returns taxi suggestion.
  */
 
-import { transitGraph, haversineDistance } from '$lib/engine/transitGraph';
-import { dijkstra, type RouteStep } from '$lib/engine/dijkstra';
+import { raptorData, findAccessStops, findNearestStations, haversineDistance } from '$lib/engine/raptorData';
+import { raptor, type RouteStep, type RaptorJourney } from '$lib/engine/raptor';
 import { geocode } from '$lib/server/geocoding';
-import { getRouteSegment, rankStationsByRealDistance } from '$lib/server/osrm';
+import { getRouteSegment } from '$lib/server/osrm';
 import type { RouteId } from '$lib/data/transitRoutes';
+
+// Re-export RouteStep so existing imports from planRoute still work
+export type { RouteStep } from '$lib/engine/raptor';
 
 // ── Types ──
 
@@ -41,16 +45,6 @@ export interface PlanError {
   };
 }
 
-// ── OSRM helper for connectPlace ──
-
-async function osrmValidator(
-  from: [number, number],
-  to: [number, number]
-): Promise<{ distance: number; minutes: number; mode: 'walk' | 'transport'; geometry?: GeoJSON.LineString } | null> {
-  const segment = await getRouteSegment(from, to);
-  return { distance: segment.distance, minutes: segment.minutes, mode: segment.mode, geometry: segment.geometry };
-}
-
 // ── Shared plan builder ──
 
 async function buildPlan(
@@ -60,55 +54,30 @@ async function buildPlan(
   destCoords: [number, number]
 ): Promise<{ plan: RoutePlan | null; alternatives: RoutePlan[]; error: PlanError | null }> {
 
-  // Connect places to graph (async — OSRM validates walk edges)
-  const originId = await transitGraph.connectPlace(originName, originCoords, 'origin', osrmValidator);
-  const destId = await transitGraph.connectPlace(destName, destCoords, 'destination', osrmValidator);
+  // Step 1: Find access/egress stops (instant — Haversine only)
+  const tAccess0 = performance.now();
+  const accessStops = findAccessStops(raptorData, originCoords);
+  const egressStops = findAccessStops(raptorData, destCoords);
+  const tAccess1 = performance.now();
+  console.log(`[TIMING]   findAccessStops: ${(tAccess1 - tAccess0).toFixed(2)}ms`);
 
-  // Handle "too far" with taxi suggestions
-  if (!originId) {
-    if (destId) transitGraph.disconnectPlace(destId);
+  if (accessStops.length === 0) {
     return { plan: null, alternatives: [], error: buildTooFarError(originName, originCoords) };
   }
-
-  if (!destId) {
-    transitGraph.disconnectPlace(originId);
+  if (egressStops.length === 0) {
     return { plan: null, alternatives: [], error: buildTooFarError(destName, destCoords) };
   }
 
-  // Primary Dijkstra
-  const result = dijkstra(transitGraph.adjacency, transitGraph.nodes, originId, destId);
+  console.log(`[RAPTOR] Access stops: ${accessStops.length}, Egress stops: ${egressStops.length}`);
 
-  // Alternatives: while origin/dest are still connected, exclude the primary first-leg
-  // route family (ida+vuelta) to force a different path
-  const altResults: typeof result[] = [];
-  if (result) {
-    const primaryFirstTransit = result.steps.find(s => s.type === 'transit');
-    if (primaryFirstTransit?.routeId) {
-      // Exclude both IDA and VUELTA of the same route to avoid trivial variants
-      const baseId = primaryFirstTransit.routeId.replace(/-ida$/, '').replace(/-vuelta$/, '');
-      const excludeFamily = [
-        `${baseId}-ida`, `${baseId}-vuelta`, primaryFirstTransit.routeId
-      ].filter((v, i, a) => a.indexOf(v) === i) as RouteId[];
+  // Step 2: RAPTOR — Pareto-optimal routing
+  const tRaptor0 = performance.now();
+  const journeys = raptor(raptorData, accessStops, egressStops);
+  const tRaptor1 = performance.now();
+  console.log(`[TIMING]   raptor: ${(tRaptor1 - tRaptor0).toFixed(2)}ms`);
 
-      const alt = dijkstra(transitGraph.adjacency, transitGraph.nodes, originId, destId,
-        { excludeRoutes: excludeFamily });
-
-      // Only keep if it's a genuinely different first line and not much slower (≤25% longer)
-      if (alt) {
-        const altFirstTransit = alt.steps.find(s => s.type === 'transit');
-        const isDifferent = altFirstTransit?.routeId &&
-          altFirstTransit.routeId.replace(/-ida$/, '').replace(/-vuelta$/, '') !== baseId;
-        if (isDifferent && alt.totalDuration <= result.totalDuration * 1.25) {
-          altResults.push(alt);
-        }
-      }
-    }
-  }
-
-  transitGraph.disconnectPlace(originId);
-  transitGraph.disconnectPlace(destId);
-
-  if (!result) {
+  if (journeys.length === 0) {
+    // Try with excludeRoutes=[] to make sure it's not a filter issue
     return {
       plan: null,
       alternatives: [],
@@ -116,47 +85,120 @@ async function buildPlan(
     };
   }
 
-  const buildPlanFromResult = (r: NonNullable<typeof result>): RoutePlan => {
-    const linesUsed: RouteId[] = [];
-    const boardingStations: string[] = [];
-    const alightingStations: string[] = [];
-    for (const step of r.steps) {
-      if (step.type === 'transit' && step.routeId) {
-        if (!linesUsed.includes(step.routeId)) linesUsed.push(step.routeId);
-        boardingStations.push(step.from);
-        alightingStations.push(step.to);
+  // Step 3: Select primary + alternatives
+  // RAPTOR gives Pareto-optimal by transfers. Also try route diversity.
+  const primary = journeys[0]; // fastest
+  let alternatives = journeys.slice(1);
+
+  // If all Pareto journeys use the same first line, generate a diverse alternative
+  const tAlt0 = performance.now();
+  if (alternatives.length === 0 && primary.linesUsed.length > 0) {
+    const primaryFirstLine = primary.linesUsed[0];
+    const baseId = primaryFirstLine.replace(/-ida$/, '').replace(/-vuelta$/, '');
+    const excludeFamily = [
+      `${baseId}-ida`, `${baseId}-vuelta`, primaryFirstLine
+    ].filter((v, i, a) => a.indexOf(v) === i) as RouteId[];
+
+    const diverseJourneys = raptor(raptorData, accessStops, egressStops, {
+      excludeRoutes: excludeFamily,
+    });
+
+    for (const alt of diverseJourneys) {
+      const altFirstLine = alt.linesUsed[0];
+      if (!altFirstLine) continue;
+      const altBase = altFirstLine.replace(/-ida$/, '').replace(/-vuelta$/, '');
+      const isDifferent = altBase !== baseId;
+      if (isDifferent && alt.totalDuration <= primary.totalDuration * 1.25) {
+        alternatives.push(alt);
+        break; // one diverse alternative is enough
       }
     }
-    return {
-      origin: { name: originName, coords: originCoords },
-      destination: { name: destName, coords: destCoords },
-      totalDuration: r.totalDuration,
-      steps: r.steps,
-      linesUsed,
-      boardingStations,
-      alightingStations,
-    };
-  };
+  }
+  const tAlt1 = performance.now();
+  console.log(`[TIMING]   alternatives (2nd raptor): ${(tAlt1 - tAlt0).toFixed(2)}ms`);
 
-  const plan = buildPlanFromResult(result);
-  const alternatives = altResults.map(buildPlanFromResult);
+  // Step 4: Build RoutePlan objects with origin/destination names filled in
+  const plan = buildRoutePlan(primary, originName, originCoords, destName, destCoords);
+  const altPlans = alternatives.map(j => buildRoutePlan(j, originName, originCoords, destName, destCoords));
 
-  console.log(`[ROUTING] ✅ ${plan.totalDuration} min, lines: [${plan.linesUsed.join(', ')}], alternatives: ${alternatives.length}`);
+  // Step 5: Enrich walk geometry via OSRM (blocking, 2-4 calls with 2s timeout)
+  const tOSRM0 = performance.now();
+  await enrichWalkGeometry(plan);
+  // Don't block on alternatives — enrich them in parallel
+  await Promise.all(altPlans.map(p => enrichWalkGeometry(p)));
+  const tOSRM1 = performance.now();
+  console.log(`[TIMING]   OSRM enrichment: ${(tOSRM1 - tOSRM0).toFixed(0)}ms`);
 
-  return { plan, alternatives, error: null };
+  console.log(`[ROUTING] ✅ ${plan.totalDuration} min, lines: [${plan.linesUsed.join(', ')}], alternatives: ${altPlans.length}`);
+
+  return { plan, alternatives: altPlans, error: null };
 }
 
-/**
- * Build an enhanced "too far" error with taxi suggestion.
- */
+// ── Build RoutePlan from RAPTOR journey ──
+
+function buildRoutePlan(
+  journey: RaptorJourney,
+  originName: string,
+  originCoords: [number, number],
+  destName: string,
+  destCoords: [number, number]
+): RoutePlan {
+  // Fill in origin/destination placeholders in walk steps
+  const steps = journey.steps.map(step => {
+    if (step.from === '__ORIGIN__') {
+      return { ...step, from: originName, fromCoords: originCoords };
+    }
+    if (step.to === '__DESTINATION__') {
+      return { ...step, to: destName, toCoords: destCoords };
+    }
+    return { ...step };
+  });
+
+  return {
+    origin: { name: originName, coords: originCoords },
+    destination: { name: destName, coords: destCoords },
+    totalDuration: journey.totalDuration,
+    steps,
+    linesUsed: journey.linesUsed,
+    boardingStations: journey.boardingStations,
+    alightingStations: journey.alightingStations,
+  };
+}
+
+// ── OSRM walk geometry enrichment ──
+
+async function enrichWalkGeometry(plan: RoutePlan): Promise<void> {
+  const walkSteps = plan.steps.filter(s => s.type === 'walk');
+  if (walkSteps.length === 0) return;
+
+  await Promise.all(
+    walkSteps.map(async (step) => {
+      try {
+        const segment = await getRouteSegment(step.fromCoords, step.toCoords);
+        step.walkGeometry = segment.geometry;
+        step.walkDistance = segment.distance;
+        // Update duration with OSRM-based real distance
+        step.duration = segment.minutes;
+      } catch {
+        // Keep Haversine estimate — OSRM failure is non-critical
+      }
+    })
+  );
+
+  // Recalculate total duration after OSRM enrichment
+  plan.totalDuration = plan.steps.reduce((sum, s) => sum + s.duration, 0);
+}
+
+// ── Too far error with taxi suggestion ──
+
 function buildTooFarError(placeName: string, placeCoords: [number, number]): PlanError {
-  const nearestStations = transitGraph.findNearestStations(placeCoords, 1);
-  
+  const nearestStations = findNearestStations(raptorData, placeCoords, 1);
+
   if (nearestStations.length > 0) {
     const nearest = nearestStations[0];
-    const distKm = Math.round(nearest.haversine / 100) / 10; // round to 0.1 km
-    const taxiMin = Math.ceil(nearest.haversine / 400); // ~24 km/h city average
-    const taxiCost = Math.round(10 + (distKm * 15)); // ~$10 base + $15/km in MTY
+    const distKm = Math.round(nearest.distance / 100) / 10;
+    const taxiMin = Math.ceil(nearest.distance / 400);
+    const taxiCost = Math.round(10 + (distKm * 15));
 
     const lineName = nearest.routeId === 'ecovia' ? 'Ecovía' :
       nearest.routeId ? `Línea ${nearest.routeId.split('-')[1]}` : '';
@@ -193,12 +235,18 @@ export async function planRoute(
     return { plan: null, alternatives: [], error: { code: 'SAME_PLACE', message: '¡Ya estás ahí!' } };
   }
 
-  const originGeo = await geocode(originName);
+  // Geocode in parallel
+  const tGeo0 = performance.now();
+  const [originGeo, destGeo] = await Promise.all([
+    geocode(originName),
+    geocode(destinationName),
+  ]);
+  const tGeo1 = performance.now();
+  console.log(`[TIMING]   geocoding: ${(tGeo1 - tGeo0).toFixed(0)}ms (origin: ${originGeo.tier}, dest: ${destGeo.tier})`);
+
   if (!originGeo.coords) {
     return { plan: null, alternatives: [], error: { code: 'GEOCODE_ORIGIN', message: `No pude encontrar "${originName}" en el mapa.` } };
   }
-
-  const destGeo = await geocode(destinationName);
   if (!destGeo.coords) {
     return { plan: null, alternatives: [], error: { code: 'GEOCODE_DEST', message: `No pude encontrar "${destinationName}" en el mapa.` } };
   }

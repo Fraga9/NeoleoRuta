@@ -78,34 +78,78 @@
     const userMsgId = `user-${Date.now()}`;
     routeMessages = [...routeMessages, { id: userMsgId, role: 'user', text: userMessage }];
 
-    // Step 1: Try route planning
+    // Step 1: Try route planning via SSE (2-phase: plan first, then NLG streaming)
     isRouteLoading = true;
     try {
       const body: any = { message: userMessage };
       if (userLocation) body.userLocation = userLocation;
 
-      const planResponse = await fetch('/api/route', {
+      const response = await fetch('/api/route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
-      if (planResponse.ok) {
-        const data = await planResponse.json();
+      if (response.ok && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let assistantMsgId = '';
+        let nlgText = '';
+        let gotPlan = false;
+        let gotRoute = false;
 
-        if (data.plan && data.nlgText) {
-          // Route found — use NLG text directly
-          currentRoutePlan = data.plan;
-          applyRoutePlan(data.plan);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-          const assistantMsgId = `assistant-${Date.now()}`;
-          routeMessages = [...routeMessages, { id: assistantMsgId, role: 'assistant', text: data.nlgText }];
-          isRouteLoading = false;
-          return;
-        } else if (data.nlgText && !data.plan) {
-          // No route found but has message (e.g., taxi suggestion)
-          const assistantMsgId = `assistant-${Date.now()}`;
-          routeMessages = [...routeMessages, { id: assistantMsgId, role: 'assistant', text: data.nlgText }];
+          buffer += decoder.decode(value, { stream: true });
+
+          // Parse SSE events from buffer
+          let eventEnd: number;
+          while ((eventEnd = buffer.indexOf('\n\n')) !== -1) {
+            const rawEvent = buffer.slice(0, eventEnd);
+            buffer = buffer.slice(eventEnd + 2);
+
+            // Parse "event: xxx\ndata: yyy"
+            const eventMatch = rawEvent.match(/^event:\s*(.+)\ndata:\s*(.+)$/s);
+            if (!eventMatch) continue;
+
+            const [, eventType, dataStr] = eventMatch;
+            let data: any;
+            try { data = JSON.parse(dataStr); } catch { continue; }
+
+            if (eventType === 'plan') {
+              // Phase 1: Plan arrived — draw the map immediately
+              gotPlan = true;
+              currentRoutePlan = data.plan;
+              applyRoutePlan(data.plan);
+              isRouteLoading = false;
+
+              // Create assistant message placeholder for streaming NLG
+              assistantMsgId = `assistant-${Date.now()}`;
+              routeMessages = [...routeMessages, { id: assistantMsgId, role: 'assistant', text: '...' }];
+              gotRoute = true;
+            } else if (eventType === 'nlg-chunk' && assistantMsgId) {
+              // Phase 2: Streaming NLG tokens
+              nlgText += data.text;
+              routeMessages = routeMessages.map(m =>
+                m.id === assistantMsgId ? { ...m, text: nlgText } : m
+              );
+            } else if (eventType === 'done') {
+              if (!gotPlan && data?.nlgText) {
+                // Error/non-route response (no plan was sent)
+                const id = `assistant-${Date.now()}`;
+                routeMessages = [...routeMessages, { id, role: 'assistant', text: data.nlgText }];
+              } else if (!gotPlan && data?.error) {
+                const id = `assistant-${Date.now()}`;
+                routeMessages = [...routeMessages, { id, role: 'assistant', text: data.error }];
+              }
+            }
+          }
+        }
+
+        if (gotRoute) {
           isRouteLoading = false;
           return;
         }

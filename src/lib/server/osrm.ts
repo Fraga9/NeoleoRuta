@@ -13,6 +13,15 @@ const WALK_SPEED = 80;        // meters per minute (4.8 km/h)
 const MAX_WALK_METERS = 2000; // walk up to 2km, beyond that → taxi/bus
 const TAXI_SPEED = 400;       // meters per minute (~24 km/h city average)
 
+// ── In-memory OSRM cache (coordinate pair → result) ──
+const osrmCache = new Map<string, { distance: number; geometry: GeoJSON.LineString }>();
+
+function cacheKey(from: [number, number], to: [number, number]): string {
+  // Round to 5 decimal places (~1m precision) for cache hits
+  const r = (n: number) => n.toFixed(5);
+  return `${r(from[0])},${r(from[1])}|${r(to[0])},${r(to[1])}`;
+}
+
 export interface RouteSegment {
   distance: number;     // meters (real street distance)
   minutes: number;      // calculated duration
@@ -29,11 +38,19 @@ async function osrmDistance(
   to: [number, number],
   profile: 'foot' | 'car' = 'foot'
 ): Promise<{ distance: number; geometry: GeoJSON.LineString } | null> {
+  // Check cache first
+  const key = cacheKey(from, to);
+  const cached = osrmCache.get(key);
+  if (cached) {
+    console.log(`[OSRM] Cache hit: ${key.slice(0, 30)}...`);
+    return cached;
+  }
+
   try {
     const url = `${OSRM_BASE}/${profile}/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`;
     const response = await fetch(url, {
       headers: { 'User-Agent': 'RegioRuta/1.0' },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(2000),
     });
 
     if (!response.ok) {
@@ -47,10 +64,12 @@ async function osrmDistance(
       return null;
     }
 
-    return {
+    const result = {
       distance: data.routes[0].distance,  // meters (accurate)
       geometry: data.routes[0].geometry,   // GeoJSON LineString
     };
+    osrmCache.set(key, result);
+    return result;
   } catch (e) {
     console.warn(`[OSRM] Fetch error: ${e instanceof Error ? e.message : String(e)}`);
     return null;
