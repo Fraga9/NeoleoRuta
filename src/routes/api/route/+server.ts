@@ -151,6 +151,9 @@ export const POST = async ({ request }: { request: Request }) => {
         } else {
           const { object: geminiIntent } = await generateObject({
             model: google('gemini-2.5-flash'),
+            providerOptions: {
+              google: { thinkingConfig: { thinkingBudget: 0 } },
+            },
             schema: z.object({
               isRouteQuery: z.boolean().describe('true si el usuario quiere saber cómo llegar a un lugar'),
               origin: z.string().optional().describe('Lugar de origen (vacío si no lo menciona)'),
@@ -220,14 +223,18 @@ Mensaje: "${message}"`,
           }).join('\n');
 
           const JERGA = `JERGA REGIOMONTANA — úsala de forma NATURAL (1-2 frases por respuesta, sin encadenar):
-"De volon pin pon"=rápido/al tiro | "En corto"=en resumen | "Simón"=sí/claro | "La neta"=la verdad | "Órale pues"=ándale | "¡Échale!"=vamos | "Pos"=pues | "Nomás"=solo | "Está cañón"=está difícil | "Pilas"=listo/alerta | "La raza"=la gente | "¡Ya estás!"=ya quedó | "Gacho"=malo/inconveniente | "Chido/a"=cool | "No te arrugues"=échale ganas | "¡Hay te wacho!"=hasta luego`;
+"De volon pin pon"=Rápido/al tiro | "En corto"=Rápido | "Simón"=sí/claro | "La neta"=la verdad | "Órale pues"=ándale | "¡Échale!"=vamos | "Pos"=pues | "Nomás"=solo | "Está cañón"=está difícil | "Pilas"=listo/alerta | "La raza"=la gente | "¡Ya estás!"=ya quedó | "Gacho"=malo/inconveniente | "Chido/a"=cool | "No te arrugues"=échale ganas | "¡Hay te wacho!"=hasta luego`;
 
-          const { textStream } = streamText({
+          const nlgResult = streamText({
             model: google('gemini-2.5-flash'),
+            maxOutputTokens: 400,
+            providerOptions: {
+              google: { thinkingConfig: { thinkingBudget: 0 } },
+            },
             prompt: `Eres "RegioRuta Inteligente", asistente de transporte en Monterrey, NL.
 ${JERGA}
 
-Explica esta ruta calculada de forma clara y breve. NO inventes otra ruta, describe EXACTAMENTE esta:
+Explica esta ruta calculada. NO inventes otra ruta, describe EXACTAMENTE esta:
 
 Origen: ${plan.origin.name}
 Destino: ${plan.destination.name}
@@ -237,10 +244,11 @@ ${routeDescription}
 ${transportTip}
 ${altSummary ? `\nAlternativas disponibles (menciónalas brevemente al final):\n${altSummary}` : ''}
 
-Escribe la explicación en 1-2 párrafos cortos. Sé conciso.`,
+Sé breve y directo (~3-4 oraciones). No repitas lo que ya se ve en el mapa.
+Menciona qué líneas tomar, transbordos, y el tiempo total. Usa 1-2 expresiones regias.`,
           });
 
-          for await (const chunk of textStream) {
+          for await (const chunk of nlgResult.textStream) {
             send('nlg-chunk', { text: chunk });
           }
         } catch (nlgError) {

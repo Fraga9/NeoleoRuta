@@ -175,9 +175,16 @@ async function enrichWalkGeometry(plan: RoutePlan): Promise<void> {
     walkSteps.map(async (step) => {
       try {
         const segment = await getRouteSegment(step.fromCoords, step.toCoords);
+        // Sanity check: if OSRM distance is wildly disproportionate to Haversine,
+        // discard it (likely a one-way road snapping artifact / U-turn loop).
+        const straightLine = haversineDistance(step.fromCoords, step.toCoords);
+        const detourRatio = straightLine > 10 ? segment.distance / straightLine : 1;
+        if (detourRatio > 4) {
+          console.warn(`[OSRM] Discarding pathological result: ${segment.distance}m vs ${Math.round(straightLine)}m Haversine (${detourRatio.toFixed(1)}x detour)`);
+          return; // keep RAPTOR's Haversine-based estimate
+        }
         step.walkGeometry = segment.geometry;
         step.walkDistance = segment.distance;
-        // Update duration with OSRM-based real distance
         step.duration = segment.minutes;
       } catch {
         // Keep Haversine estimate — OSRM failure is non-critical
