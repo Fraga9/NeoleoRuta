@@ -389,7 +389,7 @@
       {/if}
 
       <!-- Input Area -->
-      <div class="rounded-3xl bg-white/90 p-4 shadow-expressive backdrop-blur-md">
+      <div class="rounded-3xl bg-white/90 p-6 shadow-expressive backdrop-blur-md">
         {#if allMessages.length === 0}
           <h1 class="mb-2 text-xl font-bold text-primary">RegioRuta Inteligente</h1>
           <p class="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
@@ -425,12 +425,12 @@
             bind:value={input}
             disabled={isStreaming}
             placeholder={chat.messages.length === 0 ? 'Ej: ¿Cómo llego al Estadio BBVA?' : 'Escribe un mensaje...'}
-            class="flex-1 rounded-full border border-gray-200 bg-white px-6 py-2 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+            class="flex-1 rounded-full border border-gray-200 bg-white px-8 py-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={!input.trim() || isStreaming}
-            class="rounded-full bg-secondary px-6 py-2 font-semibold text-primary shadow-sm transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
+            class="rounded-full bg-secondary px-8 py-3 font-semibold text-primary shadow-sm transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
           >
             {#if isStreaming}
               <span class="flex items-center gap-1">
