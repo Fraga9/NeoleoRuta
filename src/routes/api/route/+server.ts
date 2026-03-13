@@ -13,7 +13,7 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject, streamText } from 'ai';
 import { env } from '$env/dynamic/private';
-import { planRoute, planRouteFromCoords } from '$lib/server/planRoute';
+import { planRoute, planRouteFromCoords, buildPlanDirect, type PlanResult } from '$lib/server/planRoute';
 import { haversineDistance } from '$lib/engine/raptorData';
 import { transitRoutes } from '$lib/data/transitRoutes';
 import { resolveCoordinates } from '$lib/data/knownPlaces';
@@ -113,12 +113,23 @@ function sseEvent(event: string, data: any): string {
 }
 
 export const POST = async ({ request }: { request: Request }) => {
-  const { message, userLocation } = await request.json() as {
+  const { message, userLocation, clarification } = await request.json() as {
     message: string;
     userLocation?: [number, number] | null;
+    clarification?: {
+      field: 'origin' | 'destination';
+      selectedCoords: [number, number];
+      selectedLabel: string;
+      partialIntent: {
+        origin?: string;
+        originCoords?: [number, number];
+        destination?: string;
+        destCoords?: [number, number];
+      };
+    };
   };
 
-  if (!message) {
+  if (!message && !clarification) {
     return json({ plan: null, nlgText: null, error: null });
   }
 
@@ -140,57 +151,101 @@ export const POST = async ({ request }: { request: Request }) => {
       try {
         const t0 = performance.now();
 
-        // ── Phase 1: NLU ──
-        let intent: { isRouteQuery: boolean; origin?: string; destination?: string };
+        let result: PlanResult;
 
-        const fastResult = fastNLU(message);
-        if (fastResult) {
-          intent = { isRouteQuery: true, ...fastResult };
-          console.log(`[TIMING] NLU (regex): ${(performance.now() - t0).toFixed(2)}ms`);
-          console.log('[ROUTE NLU] Fast match:', intent);
+        if (clarification) {
+          // ── Clarification response — skip NLU, route with resolved coords ──
+          console.log(`[ROUTE] Clarification: ${clarification.field} → "${clarification.selectedLabel}"`);
+          const pi = clarification.partialIntent;
+
+          if (clarification.field === 'destination') {
+            const originName = pi.origin || 'Tu ubicación actual';
+            const originCoords = pi.originCoords || userLocation || [-100.3161, 25.6866];
+            const buildResult = await buildPlanDirect(
+              originName, originCoords,
+              clarification.selectedLabel, clarification.selectedCoords
+            );
+            result = buildResult.error
+              ? { type: 'error', error: buildResult.error }
+              : { type: 'plan', plan: buildResult.plan!, alternatives: buildResult.alternatives, error: null };
+          } else {
+            // Origin was clarified — destination may still need geocoding
+            if (pi.destCoords) {
+              const buildResult = await buildPlanDirect(
+                clarification.selectedLabel, clarification.selectedCoords,
+                pi.destination || '', pi.destCoords
+              );
+              result = buildResult.error
+                ? { type: 'error', error: buildResult.error }
+                : { type: 'plan', plan: buildResult.plan!, alternatives: buildResult.alternatives, error: null };
+            } else {
+              // Need to geocode destination still
+              result = await planRouteFromCoords(
+                clarification.selectedLabel, clarification.selectedCoords,
+                pi.destination || ''
+              );
+            }
+          }
+
         } else {
-          const { object: geminiIntent } = await generateObject({
-            model: google('gemini-2.5-flash'),
-            providerOptions: {
-              google: { thinkingConfig: { thinkingBudget: 0 } },
-            },
-            schema: z.object({
-              isRouteQuery: z.boolean().describe('true si el usuario quiere saber cómo llegar a un lugar'),
-              origin: z.string().optional().describe('Lugar de origen (vacío si no lo menciona)'),
-              destination: z.string().optional().describe('Lugar de destino'),
-            }),
-            prompt: `Analiza este mensaje de un usuario de transporte público en Monterrey, NL.
+          // ── Normal flow: NLU → Routing ──
+          let intent: { isRouteQuery: boolean; origin?: string; destination?: string };
+
+          const fastResult = fastNLU(message);
+          if (fastResult) {
+            intent = { isRouteQuery: true, ...fastResult };
+            console.log(`[TIMING] NLU (regex): ${(performance.now() - t0).toFixed(2)}ms`);
+            console.log('[ROUTE NLU] Fast match:', intent);
+          } else {
+            const { object: geminiIntent } = await generateObject({
+              model: google('gemini-2.5-flash'),
+              providerOptions: {
+                google: { thinkingConfig: { thinkingBudget: 0 } },
+              },
+              schema: z.object({
+                isRouteQuery: z.boolean().describe('true si el usuario quiere saber cómo llegar a un lugar'),
+                origin: z.string().optional().describe('Lugar de origen (vacío si no lo menciona)'),
+                destination: z.string().optional().describe('Lugar de destino'),
+              }),
+              prompt: `Analiza este mensaje de un usuario de transporte público en Monterrey, NL.
 ¿Está preguntando cómo llegar a un lugar? Si sí, extrae el origen y destino.
 Si no menciona origen, deja origin vacío.
 Mensaje: "${message}"`,
-          });
-          intent = geminiIntent;
-          console.log(`[TIMING] NLU (gemini): ${(performance.now() - t0).toFixed(0)}ms`);
-          console.log('[ROUTE NLU] Gemini intent:', intent);
+            });
+            intent = geminiIntent;
+            console.log(`[TIMING] NLU (gemini): ${(performance.now() - t0).toFixed(0)}ms`);
+            console.log('[ROUTE NLU] Gemini intent:', intent);
+          }
+
+          if (!intent.isRouteQuery || !intent.destination) {
+            send('done', { plan: null, nlgText: null, error: null });
+            close();
+            return;
+          }
+
+          // ── Routing (RAPTOR + OSRM) ──
+          const tRouteStart = performance.now();
+          if (intent.origin && intent.origin.trim()) {
+            result = await planRoute(intent.origin, intent.destination);
+          } else if (userLocation) {
+            console.log('[ROUTE] Using GPS location as origin:', userLocation);
+            result = await planRouteFromCoords('Tu ubicación actual', userLocation, intent.destination);
+          } else {
+            result = await planRoute('Centro de Monterrey', intent.destination);
+          }
+          console.log(`[TIMING] Routing total: ${(performance.now() - tRouteStart).toFixed(0)}ms`);
         }
 
-        if (!intent.isRouteQuery || !intent.destination) {
-          send('done', { plan: null, nlgText: null, error: null });
+        // ── Handle result ──
+        if (result.type === 'clarification') {
+          send('clarification', result.clarification);
+          send('done', {});
           close();
           return;
         }
 
-        // ── Phase 1: Routing (RAPTOR + OSRM) ──
-        const tRouteStart = performance.now();
-        let result;
-        if (intent.origin && intent.origin.trim()) {
-          result = await planRoute(intent.origin, intent.destination);
-        } else if (userLocation) {
-          console.log('[ROUTE] Using GPS location as origin:', userLocation);
-          result = await planRouteFromCoords('Tu ubicación actual', userLocation, intent.destination);
-        } else {
-          result = await planRoute('Centro de Monterrey', intent.destination);
-        }
-        console.log(`[TIMING] Routing total: ${(performance.now() - tRouteStart).toFixed(0)}ms`);
-
-        if (result.error || !result.plan) {
-          const nlgText = result.error?.message || 'No se pudo calcular la ruta.';
-          send('done', { plan: null, nlgText, error: result.error });
+        if (result.type === 'error') {
+          send('done', { plan: null, nlgText: result.error.message, error: result.error });
           close();
           return;
         }

@@ -13,7 +13,7 @@
 
 import { raptorData, findAccessStops, findNearestStations, haversineDistance } from '$lib/engine/raptorData';
 import { raptor, type RouteStep, type RaptorJourney } from '$lib/engine/raptor';
-import { geocode } from '$lib/server/geocoding';
+import { geocode, geocodeMulti, type GeoCandidate } from '$lib/server/geocoding';
 import { getRouteSegment } from '$lib/server/osrm';
 import type { RouteId } from '$lib/data/transitRoutes';
 
@@ -45,9 +45,26 @@ export interface PlanError {
   };
 }
 
-// ── Shared plan builder ──
+export interface ClarificationNeeded {
+  field: 'origin' | 'destination';
+  original: string;
+  candidates: GeoCandidate[];
+  partialIntent: {
+    origin?: string;
+    originCoords?: [number, number];
+    destination?: string;
+    destCoords?: [number, number];
+  };
+}
 
-async function buildPlan(
+export type PlanResult =
+  | { type: 'plan'; plan: RoutePlan; alternatives: RoutePlan[]; error: null }
+  | { type: 'clarification'; clarification: ClarificationNeeded }
+  | { type: 'error'; error: PlanError };
+
+// ── Shared plan builder (also exported for clarification flow) ──
+
+export async function buildPlanDirect(
   originName: string,
   originCoords: [number, number],
   destName: string,
@@ -235,43 +252,93 @@ function buildTooFarError(placeName: string, placeCoords: [number, number]): Pla
 export async function planRoute(
   originName: string,
   destinationName: string
-): Promise<{ plan: RoutePlan | null; alternatives: RoutePlan[]; error: PlanError | null }> {
+): Promise<PlanResult> {
   console.log(`[ROUTING] Planning: "${originName}" → "${destinationName}"`);
 
   if (originName.toLowerCase().trim() === destinationName.toLowerCase().trim()) {
-    return { plan: null, alternatives: [], error: { code: 'SAME_PLACE', message: '¡Ya estás ahí!' } };
+    return { type: 'error', error: { code: 'SAME_PLACE', message: '¡Ya estás ahí!' } };
   }
 
-  // Geocode in parallel
+  // Geocode in parallel using multi-tier geocoder
   const tGeo0 = performance.now();
   const [originGeo, destGeo] = await Promise.all([
-    geocode(originName),
-    geocode(destinationName),
+    geocodeMulti(originName),
+    geocodeMulti(destinationName),
   ]);
   const tGeo1 = performance.now();
-  console.log(`[TIMING]   geocoding: ${(tGeo1 - tGeo0).toFixed(0)}ms (origin: ${originGeo.tier}, dest: ${destGeo.tier})`);
+  console.log(`[TIMING]   geocoding: ${(tGeo1 - tGeo0).toFixed(0)}ms (origin: ${originGeo.status}, dest: ${destGeo.status})`);
 
-  if (!originGeo.coords) {
-    return { plan: null, alternatives: [], error: { code: 'GEOCODE_ORIGIN', message: `No pude encontrar "${originName}" en el mapa.` } };
+  // Handle disambiguation — destination first, then origin
+  if (destGeo.status === 'ambiguous') {
+    return {
+      type: 'clarification',
+      clarification: {
+        field: 'destination',
+        original: destinationName,
+        candidates: destGeo.candidates,
+        partialIntent: {
+          origin: originName,
+          originCoords: originGeo.status === 'resolved' ? originGeo.coords : undefined,
+        },
+      },
+    };
   }
-  if (!destGeo.coords) {
-    return { plan: null, alternatives: [], error: { code: 'GEOCODE_DEST', message: `No pude encontrar "${destinationName}" en el mapa.` } };
+  if (originGeo.status === 'ambiguous') {
+    return {
+      type: 'clarification',
+      clarification: {
+        field: 'origin',
+        original: originName,
+        candidates: originGeo.candidates,
+        partialIntent: {
+          destination: destinationName,
+          destCoords: destGeo.status === 'resolved' ? destGeo.coords : undefined,
+        },
+      },
+    };
   }
 
-  return buildPlan(originName, originGeo.coords, destinationName, destGeo.coords);
+  // Handle not found
+  if (originGeo.status === 'not_found') {
+    return { type: 'error', error: { code: 'GEOCODE_ORIGIN', message: `No pude encontrar "${originName}" en el mapa. Intenta agregar la colonia o un punto de referencia cercano.` } };
+  }
+  if (destGeo.status === 'not_found') {
+    return { type: 'error', error: { code: 'GEOCODE_DEST', message: `No pude encontrar "${destinationName}" en el mapa. Intenta agregar la colonia o un punto de referencia cercano.` } };
+  }
+
+  const result = await buildPlanDirect(originName, originGeo.coords, destinationName, destGeo.coords);
+  if (result.error) return { type: 'error', error: result.error };
+  return { type: 'plan', plan: result.plan!, alternatives: result.alternatives, error: null };
 }
 
 export async function planRouteFromCoords(
   originName: string,
   originCoords: [number, number],
   destinationName: string
-): Promise<{ plan: RoutePlan | null; alternatives: RoutePlan[]; error: PlanError | null }> {
+): Promise<PlanResult> {
   console.log(`[ROUTING] Planning from GPS: [${originCoords}] → "${destinationName}"`);
 
-  const destGeo = await geocode(destinationName);
-  if (!destGeo.coords) {
-    return { plan: null, alternatives: [], error: { code: 'GEOCODE_DEST', message: `No pude encontrar "${destinationName}" en el mapa.` } };
+  const destGeo = await geocodeMulti(destinationName);
+
+  if (destGeo.status === 'ambiguous') {
+    return {
+      type: 'clarification',
+      clarification: {
+        field: 'destination',
+        original: destinationName,
+        candidates: destGeo.candidates,
+        partialIntent: {
+          origin: originName,
+          originCoords,
+        },
+      },
+    };
+  }
+  if (destGeo.status === 'not_found') {
+    return { type: 'error', error: { code: 'GEOCODE_DEST', message: `No pude encontrar "${destinationName}" en el mapa. Intenta agregar la colonia o un punto de referencia cercano.` } };
   }
 
-  return buildPlan(originName, originCoords, destinationName, destGeo.coords);
+  const result = await buildPlanDirect(originName, originCoords, destinationName, destGeo.coords);
+  if (result.error) return { type: 'error', error: result.error };
+  return { type: 'plan', plan: result.plan!, alternatives: result.alternatives, error: null };
 }

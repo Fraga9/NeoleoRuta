@@ -32,11 +32,19 @@
   // ── Route plan state ──
   let currentRoutePlan = $state<any>(null);
 
+  // ── Disambiguation state ──
+  let pendingClarification = $state<{
+    field: 'origin' | 'destination';
+    original: string;
+    candidates: Array<{ label: string; coords: [number, number] }>;
+    partialIntent: Record<string, any>;
+  } | null>(null);
+
   // Chat class for general (non-route) conversations
   const chat = new Chat({ api: '/api/chat' } as any);
 
   // Manual messages for route queries (bypasses Chat class)
-  let routeMessages = $state<Array<{ id: string; role: string; text: string }>>([]);
+  let routeMessages = $state<Array<{ id: string; role: string; text: string; candidates?: Array<{ label: string; coords: [number, number] }> }>>([]);
 
   let input = $state('');
   let messagesEl = $state<HTMLDivElement | null>(null);
@@ -65,12 +73,140 @@
     scrollToBottom();
   });
 
+  // ── SSE stream consumer (shared by handleSubmit and selectCandidate) ──
+  async function consumeSSE(body: ReadableStream<Uint8Array>): Promise<boolean> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let assistantMsgId = '';
+    let nlgText = '';
+    let gotPlan = false;
+    let gotRoute = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      let eventEnd: number;
+      while ((eventEnd = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, eventEnd);
+        buffer = buffer.slice(eventEnd + 2);
+
+        const eventMatch = rawEvent.match(/^event:\s*(.+)\ndata:\s*(.+)$/s);
+        if (!eventMatch) continue;
+
+        const [, eventType, dataStr] = eventMatch;
+        let data: any;
+        try { data = JSON.parse(dataStr); } catch { continue; }
+
+        if (eventType === 'plan') {
+          gotPlan = true;
+          currentRoutePlan = data.plan;
+          applyRoutePlan(data.plan);
+          isRouteLoading = false;
+
+          assistantMsgId = `assistant-${Date.now()}`;
+          routeMessages = [...routeMessages, { id: assistantMsgId, role: 'assistant', text: '...' }];
+          gotRoute = true;
+        } else if (eventType === 'nlg-chunk' && assistantMsgId) {
+          nlgText += data.text;
+          routeMessages = routeMessages.map(m =>
+            m.id === assistantMsgId ? { ...m, text: nlgText } : m
+          );
+        } else if (eventType === 'clarification') {
+          isRouteLoading = false;
+          pendingClarification = {
+            field: data.field,
+            original: data.original,
+            candidates: data.candidates,
+            partialIntent: data.partialIntent,
+          };
+          const fieldLabel = data.field === 'destination' ? 'destino' : 'origen';
+          const header = `Encontré varias opciones para "${data.original}" como ${fieldLabel}:`;
+          const id = `assistant-${Date.now()}`;
+          routeMessages = [...routeMessages, {
+            id,
+            role: 'assistant',
+            text: header,
+            candidates: data.candidates,
+          }];
+          gotRoute = true;
+        } else if (eventType === 'done') {
+          if (!gotPlan && !pendingClarification && data?.nlgText) {
+            const id = `assistant-${Date.now()}`;
+            routeMessages = [...routeMessages, { id, role: 'assistant', text: data.nlgText }];
+          } else if (!gotPlan && !pendingClarification && data?.error) {
+            const id = `assistant-${Date.now()}`;
+            routeMessages = [...routeMessages, { id, role: 'assistant', text: data.error }];
+          }
+        }
+      }
+    }
+    return gotRoute;
+  }
+
+  // ── Candidate selection (button click or number input) ──
+  async function selectCandidate(index: number) {
+    if (!pendingClarification) return;
+    const candidate = pendingClarification.candidates[index];
+    if (!candidate) return;
+
+    const userMsgId = `user-${Date.now()}`;
+    routeMessages = [...routeMessages, { id: userMsgId, role: 'user', text: candidate.label }];
+
+    const clarPayload = {
+      field: pendingClarification.field,
+      selectedCoords: candidate.coords,
+      selectedLabel: candidate.label,
+      partialIntent: pendingClarification.partialIntent,
+    };
+    pendingClarification = null;
+
+    // Send clarification request
+    isRouteLoading = true;
+    mapStore.clearRoutes();
+    try {
+      const body: any = { message: '', clarification: clarPayload };
+      if (userLocation) body.userLocation = userLocation;
+
+      const response = await fetch('/api/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok && response.body) {
+        await consumeSSE(response.body);
+      }
+    } catch (e) {
+      console.error('[CLIENT] Clarification fetch error:', e);
+    }
+    isRouteLoading = false;
+  }
+
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (!input.trim() || isStreaming || isRouteLoading) return;
 
     const userMessage = input.trim();
     input = '';
+
+    // Check if user is responding to disambiguation with a number
+    if (pendingClarification) {
+      const numMatch = userMessage.match(/^(?:la\s+)?(\d+)$/i);
+      if (numMatch) {
+        const idx = parseInt(numMatch[1]) - 1;
+        if (idx >= 0 && idx < pendingClarification.candidates.length) {
+          await selectCandidate(idx);
+          return;
+        }
+      }
+      // Not a valid number — treat as new query, clear disambiguation
+      pendingClarification = null;
+    }
+
     mapStore.clearRoutes();
     currentRoutePlan = null;
 
@@ -78,7 +214,7 @@
     const userMsgId = `user-${Date.now()}`;
     routeMessages = [...routeMessages, { id: userMsgId, role: 'user', text: userMessage }];
 
-    // Step 1: Try route planning via SSE (2-phase: plan first, then NLG streaming)
+    // Try route planning via SSE (2-phase: plan first, then NLG streaming)
     isRouteLoading = true;
     try {
       const body: any = { message: userMessage };
@@ -91,64 +227,7 @@
       });
 
       if (response.ok && response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let assistantMsgId = '';
-        let nlgText = '';
-        let gotPlan = false;
-        let gotRoute = false;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          // Parse SSE events from buffer
-          let eventEnd: number;
-          while ((eventEnd = buffer.indexOf('\n\n')) !== -1) {
-            const rawEvent = buffer.slice(0, eventEnd);
-            buffer = buffer.slice(eventEnd + 2);
-
-            // Parse "event: xxx\ndata: yyy"
-            const eventMatch = rawEvent.match(/^event:\s*(.+)\ndata:\s*(.+)$/s);
-            if (!eventMatch) continue;
-
-            const [, eventType, dataStr] = eventMatch;
-            let data: any;
-            try { data = JSON.parse(dataStr); } catch { continue; }
-
-            if (eventType === 'plan') {
-              // Phase 1: Plan arrived — draw the map immediately
-              gotPlan = true;
-              currentRoutePlan = data.plan;
-              applyRoutePlan(data.plan);
-              isRouteLoading = false;
-
-              // Create assistant message placeholder for streaming NLG
-              assistantMsgId = `assistant-${Date.now()}`;
-              routeMessages = [...routeMessages, { id: assistantMsgId, role: 'assistant', text: '...' }];
-              gotRoute = true;
-            } else if (eventType === 'nlg-chunk' && assistantMsgId) {
-              // Phase 2: Streaming NLG tokens
-              nlgText += data.text;
-              routeMessages = routeMessages.map(m =>
-                m.id === assistantMsgId ? { ...m, text: nlgText } : m
-              );
-            } else if (eventType === 'done') {
-              if (!gotPlan && data?.nlgText) {
-                // Error/non-route response (no plan was sent)
-                const id = `assistant-${Date.now()}`;
-                routeMessages = [...routeMessages, { id, role: 'assistant', text: data.nlgText }];
-              } else if (!gotPlan && data?.error) {
-                const id = `assistant-${Date.now()}`;
-                routeMessages = [...routeMessages, { id, role: 'assistant', text: data.error }];
-              }
-            }
-          }
-        }
-
+        const gotRoute = await consumeSSE(response.body);
         if (gotRoute) {
           isRouteLoading = false;
           return;
@@ -271,6 +350,24 @@
                       {message.text}
                     {:else}
                       {@html marked.parse(message.text)}
+                      {#if message.candidates}
+                        <div class="flex flex-col gap-1.5 mt-2">
+                          {#each message.candidates as candidate, i}
+                            <button
+                              onclick={() => selectCandidate(i)}
+                              disabled={!pendingClarification}
+                              class="text-left px-3 py-2 rounded-lg border transition-all text-sm
+                                     flex items-center gap-2
+                                     {pendingClarification
+                                       ? 'bg-white border-gray-200 hover:border-primary hover:bg-primary/5 cursor-pointer'
+                                       : 'bg-gray-50 border-gray-100 text-gray-400 cursor-default'}"
+                            >
+                              <span class="font-bold min-w-[1.5rem] {pendingClarification ? 'text-primary' : 'text-gray-300'}">{i + 1}.</span>
+                              <span>{candidate.label}</span>
+                            </button>
+                          {/each}
+                        </div>
+                      {/if}
                     {/if}
                   </div>
                 </div>
