@@ -226,12 +226,12 @@ Mensaje: "${message}"`,
           // ── Routing (RAPTOR + OSRM) ──
           const tRouteStart = performance.now();
           if (intent.origin && intent.origin.trim()) {
-            result = await planRoute(intent.origin, intent.destination);
+            result = await planRoute(intent.origin, intent.destination, userLocation ?? undefined);
           } else if (userLocation) {
             console.log('[ROUTE] Using GPS location as origin:', userLocation);
             result = await planRouteFromCoords('Tu ubicación actual', userLocation, intent.destination);
           } else {
-            result = await planRoute('Centro de Monterrey', intent.destination);
+            result = await planRoute('Centro de Monterrey', intent.destination, undefined);
           }
           console.log(`[TIMING] Routing total: ${(performance.now() - tRouteStart).toFixed(0)}ms`);
         }

@@ -1,13 +1,12 @@
 /**
- * OSRM Integration — real street-level distances using
- * the free OSRM demo server (Open Source Routing Machine).
+ * OSRM Integration — real street-level walking distances using
+ * the FOSSGIS foot-dedicated OSRM server (routing.openstreetmap.de).
  *
- * IMPORTANT: The OSRM demo server's 'foot' profile often returns
- * car-speed durations for Mexico. We use OSRM for DISTANCE only
- * and compute walking time ourselves at 80 m/min (4.8 km/h).
+ * We use OSRM for DISTANCE + GEOMETRY only and compute walking
+ * time ourselves at 80 m/min (4.8 km/h).
  */
 
-const OSRM_BASE = 'https://router.project-osrm.org/route/v1';
+const OSRM_BASE = 'https://routing.openstreetmap.de/routed-foot/route/v1';
 
 const WALK_SPEED = 80;        // meters per minute (4.8 km/h)
 const MAX_WALK_METERS = 2000; // walk up to 2km, beyond that → taxi/bus
@@ -36,7 +35,6 @@ export interface RouteSegment {
 async function osrmDistance(
   from: [number, number],
   to: [number, number],
-  profile: 'foot' | 'car' = 'foot'
 ): Promise<{ distance: number; geometry: GeoJSON.LineString } | null> {
   // Check cache first
   const key = cacheKey(from, to);
@@ -47,7 +45,7 @@ async function osrmDistance(
   }
 
   try {
-    const url = `${OSRM_BASE}/${profile}/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`;
+    const url = `${OSRM_BASE}/foot/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`;
     const response = await fetch(url, {
       headers: { 'User-Agent': 'RegioRuta/1.0' },
       signal: AbortSignal.timeout(2000),
@@ -86,7 +84,7 @@ export async function getRouteSegment(
   to: [number, number]
 ): Promise<RouteSegment> {
   // Try OSRM for real street distance
-  const osrm = await osrmDistance(from, to, 'foot');
+  const osrm = await osrmDistance(from, to);
 
   if (osrm) {
     const isWalkable = osrm.distance <= MAX_WALK_METERS;

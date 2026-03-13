@@ -85,11 +85,10 @@ async function nominatimStructured(input: string): Promise<GeoCandidate[]> {
 
   const params = new URLSearchParams({
     street: streetWithNeighborhood,
-    city: 'Monterrey',
     state: 'Nuevo León',
     country: 'Mexico',
     format: 'json',
-    limit: '5',
+    limit: '10',
     viewbox: MONTERREY_VIEWBOX,
     bounded: '1',
   });
@@ -113,67 +112,86 @@ async function nominatimStructured(input: string): Promise<GeoCandidate[]> {
 // ── Nominatim free-text ──
 
 async function nominatimFreeText(input: string): Promise<GeoCandidate[]> {
-  const params = new URLSearchParams({
-    q: `${input}, Monterrey, Nuevo León, Mexico`,
-    format: 'json',
-    limit: '5',
-    viewbox: MONTERREY_VIEWBOX,
-    bounded: '1',
-  });
-
-  try {
-    const res = await fetch(`${NOMINATIM_BASE}?${params}`, {
-      headers: { 'User-Agent': 'RegioRuta/1.0 (transit-app)' },
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.map((r: any) => ({
-      label: r.display_name?.split(',').slice(0, 3).join(',').trim() || r.display_name,
-      coords: [parseFloat(r.lon), parseFloat(r.lat)] as [number, number],
-    }));
-  } catch {
-    return [];
+  // Build query list: original + number-stripped variant to find all matching streets
+  const queries = [input];
+  const stripped = input.replace(/\s*#?\d{1,5}\s*$/, '').trim();
+  if (stripped !== input && stripped.length > 2) {
+    queries.push(stripped);
   }
+
+  const allResults: GeoCandidate[] = [];
+
+  // Sequential to respect Nominatim's rate limits
+  for (const q of queries) {
+    const params = new URLSearchParams({
+      q: `${q}, Nuevo León, Mexico`,
+      format: 'json',
+      limit: '10',
+      viewbox: MONTERREY_VIEWBOX,
+      bounded: '1',
+    });
+
+    try {
+      const res = await fetch(`${NOMINATIM_BASE}?${params}`, {
+        headers: { 'User-Agent': 'RegioRuta/1.0 (transit-app)' },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      allResults.push(...data.map((r: any) => ({
+        label: r.display_name?.split(',').slice(0, 3).join(',').trim() || r.display_name,
+        coords: [parseFloat(r.lon), parseFloat(r.lat)] as [number, number],
+      })));
+    } catch { /* ignore */ }
+  }
+
+  return allResults;
 }
 
 // ── Photon fallback ──
 
 async function photonGeocode(input: string): Promise<GeoCandidate[]> {
-  const params = new URLSearchParams({
-    q: input,
-    lat: MTY_CENTER[1].toString(),
-    lon: MTY_CENTER[0].toString(),
-    limit: '5',
-    lang: 'es',
-  });
-
-  try {
-    const res = await fetch(`${PHOTON_BASE}?${params}`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!data.features) return [];
-
-    // Filter to Monterrey metro bounding box
-    return data.features
-      .filter((f: any) => {
-        const [lon, lat] = f.geometry.coordinates;
-        return lon >= -100.5 && lon <= -100.1 && lat >= 25.5 && lat <= 25.9;
-      })
-      .map((f: any) => {
-        const p = f.properties;
-        // Deduplicate parts (name and street can be identical for address results)
-        const parts = [...new Set([p.name, p.street, p.locality, p.city].filter(Boolean))];
-        return {
-          label: parts.slice(0, 3).join(', ') || p.name || input,
-          coords: f.geometry.coordinates as [number, number],
-        };
-      });
-  } catch {
-    return [];
+  // Build query list: original + number-stripped variant to find all matching streets
+  const queries = [input];
+  const stripped = input.replace(/\s*#?\d{1,5}\s*$/, '').trim();
+  if (stripped !== input && stripped.length > 2) {
+    queries.push(stripped);
   }
+
+  const allFeatures: any[] = [];
+
+  await Promise.all(queries.map(async (q) => {
+    const params = new URLSearchParams({
+      q,
+      lat: MTY_CENTER[1].toString(),
+      lon: MTY_CENTER[0].toString(),
+      limit: '10',
+    });
+
+    try {
+      const res = await fetch(`${PHOTON_BASE}?${params}`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.features) allFeatures.push(...data.features);
+    } catch { /* ignore */ }
+  }));
+
+  // Filter to Monterrey metro bounding box + build candidates
+  return allFeatures
+    .filter((f: any) => {
+      const [lon, lat] = f.geometry.coordinates;
+      return lon >= -100.5 && lon <= -100.1 && lat >= 25.5 && lat <= 25.9;
+    })
+    .map((f: any) => {
+      const p = f.properties;
+      const parts = [...new Set([p.name, p.street, p.locality, p.city].filter(Boolean))];
+      return {
+        label: parts.slice(0, 3).join(', ') || p.name || input,
+        coords: f.geometry.coordinates as [number, number],
+      };
+    });
 }
 
 // ── Candidate processing ──
@@ -201,29 +219,58 @@ function maxCandidateSpread(candidates: GeoCandidate[]): number {
 function deduplicateCandidates(candidates: GeoCandidate[]): GeoCandidate[] {
   const result: GeoCandidate[] = [];
   for (const c of candidates) {
-    const isDupe = result.some(r => {
+    const dupeOf = result.find(r => {
       const dist = haversineDistance(r.coords, c.coords);
       const sameLabel = r.label === c.label;
-      return dist < (sameLabel ? 500 : 100);
+      return dist < (sameLabel ? 1000 : 100);
     });
-    if (!isDupe) result.push(c);
+    if (dupeOf) {
+      console.log(`[GEOCODING] Dedup: "${c.label}" (${Math.round(haversineDistance(dupeOf.coords, c.coords))}m from "${dupeOf.label}")`);
+    } else {
+      result.push(c);
+    }
   }
   return result;
 }
 
 /**
- * Process a candidate list: deduplicate, then resolve or mark ambiguous.
+ * Process a candidate list: deduplicate, sort by proximity, then resolve or mark ambiguous.
+ * @param sortByRef - reference point for sorting (user GPS or city center). Closest first.
  */
-function processCandidates(candidates: GeoCandidate[], tier: string): GeoResult | null {
+function processCandidates(candidates: GeoCandidate[], tier: string, sortByRef?: [number, number]): GeoResult | null {
+  console.log(`[GEOCODING] ${tier} raw candidates (${candidates.length}):`);
+  candidates.forEach((c, i) => {
+    console.log(`  [${i}] "${c.label}" → [${c.coords[0].toFixed(5)}, ${c.coords[1].toFixed(5)}]`);
+  });
+
   const deduped = deduplicateCandidates(candidates);
+
+  if (deduped.length < candidates.length) {
+    console.log(`[GEOCODING] After dedup: ${candidates.length} → ${deduped.length}`);
+    deduped.forEach((c, i) => {
+      console.log(`  [${i}] "${c.label}" → [${c.coords[0].toFixed(5)}, ${c.coords[1].toFixed(5)}]`);
+    });
+  }
+
   if (deduped.length === 0) return null;
 
-  if (deduped.length === 1 || maxCandidateSpread(deduped) <= DISAMBIGUATION_THRESHOLD_M) {
-    // All candidates are close together — auto-select first
+  const spread = maxCandidateSpread(deduped);
+  console.log(`[GEOCODING] Spread: ${Math.round(spread)}m (threshold: ${DISAMBIGUATION_THRESHOLD_M}m), count: ${deduped.length}`);
+
+  if (deduped.length === 1 || spread <= DISAMBIGUATION_THRESHOLD_M) {
+    console.log(`[GEOCODING] Auto-resolved: "${deduped[0].label}"`);
     return { status: 'resolved', coords: deduped[0].coords, label: deduped[0].label, tier };
   }
 
   // Multiple candidates spread >500m apart — disambiguation needed
+  // Sort by distance to reference point (closest first) so the most relevant option is at the top
+  if (sortByRef) {
+    deduped.sort((a, b) =>
+      haversineDistance(a.coords, sortByRef) - haversineDistance(b.coords, sortByRef)
+    );
+    console.log(`[GEOCODING] Sorted ${deduped.length} candidates by distance to [${sortByRef[0].toFixed(4)}, ${sortByRef[1].toFixed(4)}]`);
+  }
+
   return { status: 'ambiguous', candidates: deduped };
 }
 
@@ -233,7 +280,7 @@ function processCandidates(candidates: GeoCandidate[], tier: string): GeoResult 
  * Multi-tier geocoding with disambiguation support.
  * Returns resolved coords, ambiguous candidates, or not_found.
  */
-export async function geocodeMulti(placeName: string): Promise<GeoResult> {
+export async function geocodeMulti(placeName: string, userLocation?: [number, number]): Promise<GeoResult> {
   const key = placeName.toLowerCase().trim();
 
   // Tier 1: Local dictionary (knownPlaces)
@@ -250,34 +297,30 @@ export async function geocodeMulti(placeName: string): Promise<GeoResult> {
     return { status: 'resolved', ...cached };
   }
 
-  // Tier 3: Nominatim structured (only for detected addresses)
+  // Tiers 3+4+5: Collect candidates from all external geocoders, then process once.
+  // This ensures a structured match (Tier 3) doesn't short-circuit before
+  // free-text/Photon can find the same street in other municipalities.
   const isAddress = detectAddress(placeName);
+
+  const geocodePromises: Promise<GeoCandidate[]>[] = [];
+
   if (isAddress) {
     console.log(`[GEOCODING] Tier 3 (structured): detected address "${placeName}"`);
-    const candidates = await nominatimStructured(placeName);
-    const result = processCandidates(candidates, 'nominatim-structured');
-    if (result) {
-      if (result.status === 'resolved') geocodeCache.set(key, result);
-      return result;
-    }
+    geocodePromises.push(nominatimStructured(placeName));
   }
 
-  // Tier 4: Nominatim free-text
-  console.log(`[GEOCODING] Tier 4 (nominatim): "${placeName}"`);
-  const freeTextCandidates = await nominatimFreeText(placeName);
-  const freeTextResult = processCandidates(freeTextCandidates, 'nominatim');
-  if (freeTextResult) {
-    if (freeTextResult.status === 'resolved') geocodeCache.set(key, freeTextResult);
-    return freeTextResult;
-  }
+  console.log(`[GEOCODING] Tier 4+5 (nominatim + photon): "${placeName}"`);
+  geocodePromises.push(nominatimFreeText(placeName));
+  geocodePromises.push(photonGeocode(placeName));
 
-  // Tier 5: Photon fallback
-  console.log(`[GEOCODING] Tier 5 (photon): "${placeName}"`);
-  const photonCandidates = await photonGeocode(placeName);
-  const photonResult = processCandidates(photonCandidates, 'photon');
-  if (photonResult) {
-    if (photonResult.status === 'resolved') geocodeCache.set(key, photonResult);
-    return photonResult;
+  const allResults = await Promise.all(geocodePromises);
+  const allCandidates = allResults.flat();
+
+  const sortRef = userLocation || MTY_CENTER;
+  const mergedResult = processCandidates(allCandidates, isAddress ? 'structured+nominatim+photon' : 'nominatim+photon', sortRef);
+  if (mergedResult) {
+    if (mergedResult.status === 'resolved') geocodeCache.set(key, mergedResult);
+    return mergedResult;
   }
 
   console.warn(`[GEOCODING] All tiers failed for "${placeName}"`);

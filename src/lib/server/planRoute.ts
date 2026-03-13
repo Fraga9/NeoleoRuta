@@ -251,7 +251,8 @@ function buildTooFarError(placeName: string, placeCoords: [number, number]): Pla
 
 export async function planRoute(
   originName: string,
-  destinationName: string
+  destinationName: string,
+  userLocation?: [number, number]
 ): Promise<PlanResult> {
   console.log(`[ROUTING] Planning: "${originName}" → "${destinationName}"`);
 
@@ -262,8 +263,8 @@ export async function planRoute(
   // Geocode in parallel using multi-tier geocoder
   const tGeo0 = performance.now();
   const [originGeo, destGeo] = await Promise.all([
-    geocodeMulti(originName),
-    geocodeMulti(destinationName),
+    geocodeMulti(originName, userLocation),
+    geocodeMulti(destinationName, userLocation),
   ]);
   const tGeo1 = performance.now();
   console.log(`[TIMING]   geocoding: ${(tGeo1 - tGeo0).toFixed(0)}ms (origin: ${originGeo.status}, dest: ${destGeo.status})`);
@@ -318,7 +319,7 @@ export async function planRouteFromCoords(
 ): Promise<PlanResult> {
   console.log(`[ROUTING] Planning from GPS: [${originCoords}] → "${destinationName}"`);
 
-  const destGeo = await geocodeMulti(destinationName);
+  const destGeo = await geocodeMulti(destinationName, originCoords);
 
   if (destGeo.status === 'ambiguous') {
     return {
