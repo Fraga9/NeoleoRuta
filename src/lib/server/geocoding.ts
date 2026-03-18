@@ -95,7 +95,7 @@ async function nominatimStructured(input: string): Promise<GeoCandidate[]> {
 
   try {
     const res = await fetch(`${NOMINATIM_BASE}?${params}`, {
-      headers: { 'User-Agent': 'RegioRuta/1.0 (transit-app)' },
+      headers: { 'User-Agent': 'NeoleoRuta/1.0 (transit-app)' },
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return [];
@@ -133,7 +133,7 @@ async function nominatimFreeText(input: string): Promise<GeoCandidate[]> {
 
     try {
       const res = await fetch(`${NOMINATIM_BASE}?${params}`, {
-        headers: { 'User-Agent': 'RegioRuta/1.0 (transit-app)' },
+        headers: { 'User-Agent': 'NeoleoRuta/1.0 (transit-app)' },
         signal: AbortSignal.timeout(3000),
       });
       if (!res.ok) continue;

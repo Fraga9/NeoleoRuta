@@ -63,7 +63,7 @@ JERGA REGIOMONTANA — úsala de forma NATURAL (1-2 frases por respuesta, sin en
 
   if (routePlan) {
     systemPrompt = `
-Eres "RegioRuta Inteligente", un asistente de transporte público en Monterrey, NL.
+Eres "Neoleo Ruta Inteligente", un asistente de transporte público en Monterrey, NL.
 Tono: amable, directo, con jerga regiomontana natural.
 ${JERGA}
 
@@ -86,7 +86,7 @@ ${contextText}
 `;
   } else {
     systemPrompt = `
-Eres "RegioRuta Inteligente", un experto asistente de transporte público en Monterrey, NL.
+Eres "Neoleo Ruta Inteligente", un experto asistente de transporte público en Monterrey, NL.
 Tu objetivo es ayudar a la gente a llegar a distintos lugares usando Rutas Urbanas, Metro y Transmetro.
 ${JERGA}
 

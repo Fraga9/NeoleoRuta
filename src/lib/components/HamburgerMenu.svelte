@@ -89,7 +89,7 @@
       class="mt-1 w-72 origin-top-left overflow-hidden rounded-[2.5rem] bg-white/95 p-3 shadow-expressive ring-1 ring-black/5 backdrop-blur-2xl"
     >
       <div class="mb-4 px-6 pt-5">
-        <h3 class="text-[11px] font-bold tracking-[0.1em] text-primary/40 uppercase">Menú RegioRuta</h3>
+        <h3 class="text-[11px] font-bold tracking-[0.1em] text-primary/40 uppercase">Menú Neoleo Ruta</h3>
       </div>
 
       <nav class="flex flex-col gap-1">

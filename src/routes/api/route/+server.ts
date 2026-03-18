@@ -286,7 +286,7 @@ Mensaje: "${message}"`,
             providerOptions: {
               google: { thinkingConfig: { thinkingBudget: 0 } },
             },
-            prompt: `Eres "RegioRuta Inteligente", asistente de transporte en Monterrey, NL.
+            prompt: `Eres "Neoleo Ruta Inteligente", asistente de transporte en Monterrey, NL.
 ${JERGA}
 
 Explica esta ruta calculada. NO inventes otra ruta, describe EXACTAMENTE esta:

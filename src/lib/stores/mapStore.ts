@@ -17,6 +17,7 @@ export interface MapState {
   boardingStations: string[];   // station names to highlight as "board here"
   alightingStations: string[];  // station names to highlight as "get off here"
   walkSegments: WalkSegment[];  // real street paths for walk legs (from OSRM)
+  userLocation: [number, number] | null;
 }
 
 const initialState: MapState = {
@@ -26,6 +27,7 @@ const initialState: MapState = {
   boardingStations: [],
   alightingStations: [],
   walkSegments: [],
+  userLocation: null,
 };
 
 function createMapStore() {
@@ -60,7 +62,10 @@ function createMapStore() {
     addWalkSegment: (geometry: GeoJSON.LineString) => {
       update(state => ({ ...state, walkSegments: [...state.walkSegments, { geometry }] }));
     },
-    clearRoutes: () => set(initialState),
+    setUserLocation: (coords: [number, number]) => {
+      update(state => ({ ...state, userLocation: coords }));
+    },
+    clearRoutes: () => update(state => ({ ...initialState, userLocation: state.userLocation })),
   };
 }
 

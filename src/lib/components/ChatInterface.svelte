@@ -299,7 +299,7 @@
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
         </svg>
-        <span>RegioRuta</span>
+        <span>Neoleo Ruta</span>
         <span class="text-xs bg-primary text-white rounded-full min-w-6 h-6 px-2 flex items-center justify-center font-bold">
           {allMessages.length}
         </span>
@@ -338,7 +338,7 @@
               {#each allMessages as message (message.id)}
                 <div class="flex flex-col {message.role === 'user' ? 'items-end' : 'items-start'}">
                   <span class="text-xs text-gray-400 mb-1 ml-2">
-                    {message.role === 'user' ? 'Tú' : 'RegioRuta Inteligente'}
+                    {message.role === 'user' ? 'Tú' : 'Neoleo Ruta Inteligente'}
                   </span>
                   <div
                     class="max-w-[85%] rounded-2xl px-4 py-2 text-sm leading-relaxed
@@ -374,7 +374,7 @@
               {/each}
               {#if isRouteLoading}
                 <div class="flex flex-col items-start">
-                  <span class="text-xs text-gray-400 mb-1 ml-2">RegioRuta Inteligente</span>
+                  <span class="text-xs text-gray-400 mb-1 ml-2">Neoleo Ruta Inteligente</span>
                   <div class="bg-gray-100 text-gray-500 rounded-2xl rounded-tl-sm px-4 py-2 text-sm flex items-center gap-2">
                     <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0ms]"></span>
                     <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:150ms]"></span>
@@ -391,7 +391,7 @@
       <!-- Input Area -->
       <div class="rounded-3xl bg-white/90 p-6 shadow-expressive backdrop-blur-md">
         {#if allMessages.length === 0}
-          <h1 class="mb-2 text-xl font-bold text-primary">RegioRuta Inteligente</h1>
+          <h1 class="mb-2 text-xl font-bold text-primary">Neoleo Ruta Inteligente</h1>
           <p class="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
             <span>¿A dónde quieres ir hoy en Monterrey?</span>
             {#if locationStatus === 'granted'}

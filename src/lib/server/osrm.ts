@@ -47,7 +47,7 @@ async function osrmDistance(
   try {
     const url = `${OSRM_BASE}/foot/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`;
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'RegioRuta/1.0' },
+      headers: { 'User-Agent': 'NeoleoRuta/1.0' },
       signal: AbortSignal.timeout(2000),
     });
 

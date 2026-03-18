@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import MapLibreMap from '$lib/components/MapLibreMap.svelte';
   import ChatInterface from '$lib/components/ChatInterface.svelte';
   import HamburgerMenu from '$lib/components/HamburgerMenu.svelte';
@@ -9,16 +10,26 @@
   // ── Geolocation ──
   let userLocation = $state<[number, number] | null>(null);
   let locationStatus = $state<'idle' | 'requesting' | 'granted' | 'denied'>('idle');
+  let watchId: number | null = null;
 
   function requestLocation() {
     if (!navigator.geolocation) { locationStatus = 'denied'; return; }
     locationStatus = 'requesting';
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { userLocation = [pos.coords.longitude, pos.coords.latitude]; locationStatus = 'granted'; },
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const coords: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+        userLocation = coords;
+        mapStore.setUserLocation(coords);
+        locationStatus = 'granted';
+      },
       () => { locationStatus = 'denied'; },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   }
+
+  onDestroy(() => {
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+  });
 
   $effect(() => { if (locationStatus === 'idle') requestLocation(); });
 
@@ -134,7 +145,7 @@
 </script>
 
 <svelte:head>
-  <title>RegioRuta - Monterrey</title>
+  <title>Neoleo Ruta - Monterrey</title>
 </svelte:head>
 
 <main class="relative h-screen w-screen overflow-hidden bg-background-app">
