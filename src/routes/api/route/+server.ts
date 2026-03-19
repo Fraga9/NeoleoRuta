@@ -282,25 +282,19 @@ Mensaje: "${message}"`,
 
           const nlgResult = streamText({
             model: google('gemini-2.5-flash'),
-            maxOutputTokens: 400,
+            maxOutputTokens: 150,
             providerOptions: {
               google: { thinkingConfig: { thinkingBudget: 0 } },
             },
             prompt: `Eres "Neoleo Ruta Inteligente", asistente de transporte en Monterrey, NL.
 ${JERGA}
 
-Explica esta ruta calculada. NO inventes otra ruta, describe EXACTAMENTE esta:
+El usuario quiere ir de "${plan.origin.name}" a "${plan.destination.name}".
+La ruta tardará ~${plan.totalDuration} minutos en total.${transportTip}
+${altSummary ? `\nAlternativas: ${altSummary}` : ''}
 
-Origen: ${plan.origin.name}
-Destino: ${plan.destination.name}
-Tiempo total: ~${plan.totalDuration} minutos
-Pasos:
-${routeDescription}
-${transportTip}
-${altSummary ? `\nAlternativas disponibles (menciónalas brevemente al final):\n${altSummary}` : ''}
-
-Sé breve y directo (~3-4 oraciones). No repitas lo que ya se ve en el mapa.
-Menciona qué líneas tomar, transbordos, y el tiempo total. Usa 1-2 expresiones regias.`,
+Escribe UN saludo muy breve y cálido (máximo 2 oraciones). Menciona el tiempo total y si hay alternativas.
+Usa 1 expresión regia natural. NO describas los pasos (ya se muestran como tarjetas visuales).`,
           });
 
           for await (const chunk of nlgResult.textStream) {

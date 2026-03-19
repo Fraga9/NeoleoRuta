@@ -5,6 +5,7 @@
   import { browser } from '$app/environment';
   import { mapStore } from '$lib/stores/mapStore';
   import type { RouteId } from '$lib/data/transitRoutes';
+  import RouteStepsCard from './RouteStepsCard.svelte';
 
   marked.setOptions({ breaks: true });
 
@@ -207,6 +208,7 @@
     id: string;
     role: string;
     text: string;
+    plan?: any;
     candidates?: Array<{ label: string; coords: [number, number] }>;
   }>>([]);
 
@@ -268,7 +270,7 @@
           applyRoutePlan(data.plan);
           isRouteLoading = false;
           assistantMsgId = `assistant-${Date.now()}`;
-          routeMessages = [...routeMessages, { id: assistantMsgId, role: 'assistant', text: '...' }];
+          routeMessages = [...routeMessages, { id: assistantMsgId, role: 'assistant', text: '...', plan: data.plan }];
           gotRoute = true;
         } else if (eventType === 'nlg-chunk' && assistantMsgId) {
           nlgText += data.text;
@@ -509,7 +511,7 @@
   <!-- ── Scrollable Content ── -->
   <div
     bind:this={messagesEl}
-    class="messages-scroll flex-1 overflow-y-auto px-4 pb-4 overscroll-contain
+    class="messages-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-4 overscroll-contain
            transition-opacity duration-200
            {sheetMode === 'compact' ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
     style="touch-action: pan-y;"
@@ -544,15 +546,22 @@
       <div class="flex flex-col gap-4 pt-2">
         {#each allMessages as message (message.id)}
           <div class="flex flex-col {message.role === 'user' ? 'items-end' : 'items-start'}">
-            <div
-              class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed
-                {message.role === 'user'
-                  ? 'bg-primary text-white rounded-[1.25rem] rounded-tr-md shadow-sm'
-                  : 'bg-[#F2F2F7] text-[#1c1b1d] rounded-[1.25rem] rounded-tl-md prose prose-sm'}"
-            >
-              {#if message.role === 'user'}
+            {#if message.role === 'user'}
+              <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-primary text-white rounded-[1.25rem] rounded-tr-md shadow-sm">
                 {message.text}
-              {:else}
+              </div>
+            {:else if 'plan' in message && message.plan}
+              <!-- Route response: short greeting + visual step card -->
+              <div class="w-full max-w-[92%] flex flex-col gap-2">
+                {#if message.text && message.text !== '...'}
+                  <div class="px-4 py-2.5 text-[15px] leading-relaxed bg-[#F2F2F7] text-[#1c1b1d] rounded-[1.25rem] rounded-tl-md prose prose-sm">
+                    {@html marked.parse(message.text)}
+                  </div>
+                {/if}
+                <RouteStepsCard plan={message.plan} />
+              </div>
+            {:else}
+              <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-[#F2F2F7] text-[#1c1b1d] rounded-[1.25rem] rounded-tl-md prose prose-sm">
                 {@html marked.parse(message.text)}
                 {#if 'candidates' in message && message.candidates}
                   <div class="mt-3 flex flex-col gap-1.5">
@@ -570,8 +579,8 @@
                     {/each}
                   </div>
                 {/if}
-              {/if}
-            </div>
+              </div>
+            {/if}
           </div>
         {/each}
         {#if isRouteLoading}
