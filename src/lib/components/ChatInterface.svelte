@@ -6,6 +6,8 @@
   import { mapStore } from '$lib/stores/mapStore';
   import type { RouteId } from '$lib/data/transitRoutes';
   import RouteStepsCard from './RouteStepsCard.svelte';
+  import RouteOptionsTabs from './RouteOptionsTabs.svelte';
+  import { calcTotalFare } from '$lib/data/fareRules';
 
   marked.setOptions({ breaks: true });
 
@@ -209,6 +211,7 @@
     role: string;
     text: string;
     plan?: any;
+    alternatives?: any[];
     candidates?: Array<{ label: string; coords: [number, number] }>;
   }>>([]);
 
@@ -270,7 +273,7 @@
           applyRoutePlan(data.plan);
           isRouteLoading = false;
           assistantMsgId = `assistant-${Date.now()}`;
-          routeMessages = [...routeMessages, { id: assistantMsgId, role: 'assistant', text: '...', plan: data.plan }];
+          routeMessages = [...routeMessages, { id: assistantMsgId, role: 'assistant', text: '...', plan: data.plan, alternatives: data.alternatives ?? [] }];
           gotRoute = true;
         } else if (eventType === 'nlg-chunk' && assistantMsgId) {
           nlgText += data.text;
@@ -558,7 +561,21 @@
                     {@html marked.parse(message.text)}
                   </div>
                 {/if}
-                <RouteStepsCard plan={message.plan} />
+                {#if message.alternatives && message.alternatives.length > 0}
+                  <RouteOptionsTabs
+                    plans={[message.plan, ...message.alternatives]}
+                    onSelect={(i) => {
+                      const all = [message.plan, ...message.alternatives];
+                      mapStore.clearRoutes();
+                      applyRoutePlan(all[i]);
+                    }}
+                  />
+                {:else}
+                  <RouteStepsCard
+                    plan={message.plan}
+                    totalFare={calcTotalFare(message.plan.linesUsed)}
+                  />
+                {/if}
               </div>
             {:else}
               <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-[#F2F2F7] text-[#1c1b1d] rounded-[1.25rem] rounded-tl-md prose prose-sm">

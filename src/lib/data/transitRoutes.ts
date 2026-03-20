@@ -5,7 +5,15 @@ export type RouteId =
   | 'ruta-13-c4-ida' | 'ruta-13-c4-vuelta'
   | 'ruta-220-pedregal-ida' | 'ruta-220-pedregal-vuelta'
   | 'ruta-226-bosques-ida' | 'ruta-226-bosques-vuelta'
-  | 'ruta-unidad-laredo-ida' | 'ruta-unidad-laredo-vuelta';
+  | 'ruta-unidad-laredo-ida' | 'ruta-unidad-laredo-vuelta'
+  | 'transmetro-sendero-casco-ida' | 'transmetro-sendero-casco-vuelta'
+  | 'ruta-209-olivos-ida' | 'ruta-209-olivos-vuelta'
+  | 'ruta-19-san-miguel-ida' | 'ruta-19-san-miguel-vuelta'
+  | 'ruta-233-cumbres-ida' | 'ruta-233-cumbres-vuelta'
+  | 'ruta-233-uanl-ida' | 'ruta-233-uanl-vuelta'
+  | 'transmetro-sendero-miravista-ida' | 'transmetro-sendero-miravista-vuelta'
+  | 'transmetro-sendero-monterreal-ida' | 'transmetro-sendero-monterreal-vuelta'
+  | 'transmetro-sendero-sn-apodaca-ida' | 'transmetro-sendero-sn-apodaca-vuelta';
 
 export interface Station {
   name: string;

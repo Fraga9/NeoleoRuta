@@ -71,6 +71,78 @@ const ROUTE_DEFS = [
     label: 'Ruta La Unidad-Laredo-UTE',
     shortName: 'RU',
   },
+  {
+    file: 'Transmetro Sendero - Casco - Pedregal.kml',
+    idaId: 'transmetro-sendero-casco-ida',
+    vueltaId: 'transmetro-sendero-casco-vuelta',
+    idaColor: '#097138',
+    vueltaColor: '#7CB342',
+    label: 'Transmetro Sendero-Casco-Pedregal',
+    shortName: 'TMP',
+  },
+  {
+    file: 'R209 OLIVOS.kml',
+    idaId: 'ruta-209-olivos-ida',
+    vueltaId: 'ruta-209-olivos-vuelta',
+    idaColor: '#E65100',
+    vueltaColor: '#FFAB76',
+    label: 'Ruta 209 Olivos',
+    shortName: 'R209',
+  },
+  {
+    file: 'Ruta 19 San Miguel del Parque - Centro.kml',
+    idaId: 'ruta-19-san-miguel-ida',
+    vueltaId: 'ruta-19-san-miguel-vuelta',
+    idaColor: '#6A1B9A',
+    vueltaColor: '#CE93D8',
+    label: 'Ruta 19 San Miguel del Parque-Centro',
+    shortName: 'R19',
+  },
+  {
+    file: 'Ruta 233 Cumbres.kml',
+    idaId: 'ruta-233-cumbres-ida',
+    vueltaId: 'ruta-233-cumbres-vuelta',
+    idaColor: '#00838F',
+    vueltaColor: '#80DEEA',
+    label: 'Ruta 233 Cumbres',
+    shortName: 'R233C',
+  },
+  {
+    file: 'Ruta 233 UANL.kml',
+    idaId: 'ruta-233-uanl-ida',
+    vueltaId: 'ruta-233-uanl-vuelta',
+    idaColor: '#1565C0',
+    vueltaColor: '#90CAF9',
+    label: 'Ruta 233 UANL',
+    shortName: 'R233U',
+  },
+  {
+    file: 'Transmetro Sendero - Miravista.kml',
+    idaId: 'transmetro-sendero-miravista-ida',
+    vueltaId: 'transmetro-sendero-miravista-vuelta',
+    idaColor: '#2E7D32',
+    vueltaColor: '#A5D6A7',
+    label: 'Transmetro Sendero-Miravista',
+    shortName: 'TMM',
+  },
+  {
+    file: 'Transmetro Sendero - Monterreal.kml',
+    idaId: 'transmetro-sendero-monterreal-ida',
+    vueltaId: 'transmetro-sendero-monterreal-vuelta',
+    idaColor: '#AD1457',
+    vueltaColor: '#F48FB1',
+    label: 'Transmetro Sendero-Monterreal',
+    shortName: 'TMR',
+  },
+  {
+    file: 'Transmetro Sendero - San Nicolás - Apodaca.kml',
+    idaId: 'transmetro-sendero-sn-apodaca-ida',
+    vueltaId: 'transmetro-sendero-sn-apodaca-vuelta',
+    idaColor: '#4527A0',
+    vueltaColor: '#B39DDB',
+    label: 'Transmetro Sendero-San Nicolás-Apodaca',
+    shortName: 'TMSN',
+  },
 ];
 
 // All metro/ecovia stations for transfer detection
@@ -182,33 +254,42 @@ function haversine(c1, c2) {
 // ── KML Parser ──
 
 function parseKml(xmlText) {
-  // Extract all placemarks with name and coordinates
-  const placemarks = [];
+  const lines = [];   // LineString placemarks → route geometry
+  const points = [];  // Point placemarks → predefined stops
+
   const pmRegex = /<Placemark>([\s\S]*?)<\/Placemark>/g;
   let match;
   while ((match = pmRegex.exec(xmlText)) !== null) {
     const block = match[1];
     const nameMatch = block.match(/<name>(.*?)<\/name>/);
     const coordMatch = block.match(/<coordinates>([\s\S]*?)<\/coordinates>/);
-    if (nameMatch && coordMatch) {
-      const name = nameMatch[1].trim();
-      const coordsText = coordMatch[1].trim();
-      const coords = coordsText
-        .split(/\s+/)
-        .filter(s => s.length > 0)
-        .map(s => {
-          const [lng, lat] = s.split(',').map(Number);
-          return [lng, lat];
-        })
-        .filter(c => !isNaN(c[0]) && !isNaN(c[1]));
-      placemarks.push({ name, coords });
+    if (!nameMatch || !coordMatch) continue;
+
+    const name = nameMatch[1].trim();
+    const coordsText = coordMatch[1].trim();
+    const coords = coordsText
+      .split(/\s+/)
+      .filter(s => s.length > 0)
+      .map(s => {
+        const [lng, lat] = s.split(',').map(Number);
+        return [lng, lat];
+      })
+      .filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+
+    if (coords.length === 0) continue;
+
+    if (block.includes('<LineString>') || block.includes('<LineString ')) {
+      lines.push({ name, coords });
+    } else if (block.includes('<Point>') || block.includes('<Point ')) {
+      // Single-coordinate Point placemark → predefined stop
+      points.push({ name, coord: coords[0] });
     }
   }
 
-  // Identify IDA and VUELTA
+  // Identify IDA and VUELTA from LineString placemarks
   let ida = null;
   let vuelta = null;
-  for (const pm of placemarks) {
+  for (const pm of lines) {
     const upper = pm.name.toUpperCase();
     if (upper.includes('IDA') || upper.includes('VÍA 1') || upper.includes('VIA 1')) {
       ida = pm.coords;
@@ -217,16 +298,67 @@ function parseKml(xmlText) {
     }
   }
 
-  // Fallback: if only one placemark or names don't match, use order
-  if (!ida && !vuelta && placemarks.length >= 2) {
-    ida = placemarks[0].coords;
-    vuelta = placemarks[1].coords;
-  } else if (!ida && !vuelta && placemarks.length === 1) {
-    ida = placemarks[0].coords;
-    vuelta = placemarks[0].coords;
+  // Fallback: use order if names don't match
+  if (!ida && !vuelta && lines.length >= 2) {
+    ida = lines[0].coords;
+    vuelta = lines[1].coords;
+  } else if (!ida && !vuelta && lines.length === 1) {
+    ida = lines[0].coords;
+    vuelta = lines[0].coords;
   }
 
-  return { ida: ida || [], vuelta: vuelta || [] };
+  return { ida: ida || [], vuelta: vuelta || [], points };
+}
+
+// ── KML Stop Assigner ──
+// Used when the KML already has Point placemarks (real stops).
+// Projects each point onto the linestring, filters outliers,
+// sorts by position along route, and marks transfers on existing stops only.
+
+const KML_STOP_SNAP_METERS = 200; // max distance from linestring to count as on-route
+
+function assignKmlStops(lineCoords, kmlPoints, shortName, direction) {
+  if (lineCoords.length === 0 || kmlPoints.length === 0) return [];
+
+  // Project each KML point onto the linestring: find nearest vertex
+  const candidates = [];
+  for (const pt of kmlPoints) {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < lineCoords.length; i++) {
+      const d = haversine(lineCoords[i], pt.coord);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    if (bestDist > KML_STOP_SNAP_METERS) continue; // too far off-route, skip
+
+    candidates.push({
+      index: bestIdx,
+      coord: pt.coord,
+      name: `${shortName} ${direction} ${pt.name}`,
+      transferTo: [],
+      isTransfer: false,
+    });
+  }
+
+  // Sort by position along linestring
+  candidates.sort((a, b) => a.index - b.index);
+
+  // Mark transfers: check if any existing stop is near a metro/ecovía station.
+  // We do NOT add new stops — only annotate existing ones.
+  for (const stop of candidates) {
+    const seen = new Set();
+    for (const station of TRANSIT_STATIONS) {
+      if (seen.has(station.name)) continue;
+      const d = haversine(stop.coord, station.coords);
+      if (d <= TRANSFER_RADIUS_METERS) {
+        stop.transferTo.push(station.routeId);
+        stop.isTransfer = true;
+        seen.add(station.name);
+      }
+    }
+  }
+
+  return candidates;
 }
 
 // ── Bus Stop Generator ──
@@ -381,23 +513,30 @@ for (const def of ROUTE_DEFS) {
   }
 
   const xml = fs.readFileSync(kmlPath, 'utf-8');
-  const { ida, vuelta } = parseKml(xml);
+  const { ida, vuelta, points } = parseKml(xml);
+  const hasKmlStops = points.length > 0;
 
   console.log(`📄 ${def.file}`);
   console.log(`   IDA: ${ida.length} coords, VUELTA: ${vuelta.length} coords`);
+  console.log(`   Stops mode: ${hasKmlStops ? `KML points (${points.length} found)` : 'auto-generated'}`);
 
-  // Generate stops for IDA
-  const idaStops = generateStops(ida, def.shortName, 'I', def.idaId);
+  // Build stops: use KML points if available, otherwise auto-generate
+  const idaStops = hasKmlStops
+    ? assignKmlStops(ida, points, def.shortName, 'I')
+    : generateStops(ida, def.shortName, 'I', def.idaId);
+
   const idaTransfers = idaStops.filter(s => s.isTransfer);
-  console.log(`   IDA stops: ${idaStops.length} (${idaTransfers.length} transfers)`);
+  console.log(`   IDA stops: ${idaStops.length} (${idaTransfers.length} with transfer)`);
   for (const t of idaTransfers) {
     console.log(`     ↔ ${t.name} → [${t.transferTo.join(', ')}]`);
   }
 
-  // Generate stops for VUELTA
-  const vueltaStops = generateStops(vuelta, def.shortName, 'V', def.vueltaId);
+  const vueltaStops = hasKmlStops
+    ? assignKmlStops(vuelta, points, def.shortName, 'V')
+    : generateStops(vuelta, def.shortName, 'V', def.vueltaId);
+
   const vueltaTransfers = vueltaStops.filter(s => s.isTransfer);
-  console.log(`   VUELTA stops: ${vueltaStops.length} (${vueltaTransfers.length} transfers)`);
+  console.log(`   VUELTA stops: ${vueltaStops.length} (${vueltaTransfers.length} with transfer)`);
   for (const t of vueltaTransfers) {
     console.log(`     ↔ ${t.name} → [${t.transferTo.join(', ')}]`);
   }

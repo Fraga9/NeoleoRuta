@@ -1,5 +1,6 @@
 <script lang="ts">
   import { haversineDistance } from '$lib/engine/raptorData';
+  import { formatFare } from '$lib/data/fareRules';
 
   interface RouteStep {
     type: 'walk' | 'transit' | 'transfer';
@@ -22,9 +23,10 @@
 
   interface Props {
     plan: RoutePlan;
+    totalFare?: number;
   }
 
-  let { plan } = $props<Props>();
+  let { plan, totalFare } = $props<Props>();
 
   // ── Route metadata ──
   const ROUTE_META: Record<string, { color: string; label: string; short: string; mode: 'metro' | 'ecovia' | 'bus' }> = {
@@ -66,11 +68,18 @@
         {plan.origin.name} → {plan.destination.name}
       </p>
     </div>
-    <div class="flex-shrink-0 ml-3 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1">
-      <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-      </svg>
-      <span class="text-[12px] font-bold text-white">{plan.totalDuration} min</span>
+    <div class="flex-shrink-0 ml-3 flex items-center gap-1.5">
+      <div class="flex items-center gap-1 rounded-full bg-primary px-3 py-1">
+        <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span class="text-[12px] font-bold text-white">{plan.totalDuration} min</span>
+      </div>
+      {#if totalFare !== undefined}
+        <div class="flex items-center gap-1 rounded-full bg-[#CFDA5A]/80 px-2.5 py-1">
+          <span class="text-[12px] font-bold text-primary">{formatFare(totalFare)}</span>
+        </div>
+      {/if}
     </div>
   </div>
 
