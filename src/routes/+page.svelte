@@ -4,6 +4,7 @@
   import ChatInterface from '$lib/components/ChatInterface.svelte';
   import HamburgerMenu from '$lib/components/HamburgerMenu.svelte';
   import ActionPanel from '$lib/components/ActionPanel.svelte';
+  import LandmarkModal from '$lib/components/LandmarkModal.svelte';
   import { transitRoutes, type RouteId } from '$lib/data/transitRoutes';
   import { mapStore } from '$lib/stores/mapStore';
 
@@ -163,4 +164,5 @@
   />
 
   <ChatInterface externalUserLocation={userLocation} externalLocationStatus={locationStatus} onLocationRequest={requestLocation} />
+  <LandmarkModal />
 </main>

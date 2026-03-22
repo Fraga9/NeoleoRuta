@@ -3,6 +3,8 @@
   import maplibregl from 'maplibre-gl';
   import { mapStore, type MapState } from '$lib/stores/mapStore';
   import { transitRoutes, type RouteId } from '$lib/data/transitRoutes';
+  import { landmarks, CATEGORY_COLOR, CATEGORY_ICON } from '$lib/data/landmarks';
+  import { landmarkStore } from '$lib/stores/landmarkStore';
   import 'maplibre-gl/dist/maplibre-gl.css';
 
   let mapContainer: HTMLDivElement;
@@ -13,9 +15,14 @@
 
   let mapState = $state<MapState>({ routes: [], origin: null, destination: null, boardingStations: [], alightingStations: [], walkSegments: [], userLocation: null });
   let mapLoaded = $state(false);
+  // Dev coord picker — click anywhere on map to get [lng, lat]
+  let devCoords = $state<string | null>(null);
+  let devCopied = $state(false);
 
   // Keep track of markers so we can remove them
   let markers: maplibregl.Marker[] = [];
+  // POI landmark markers — separate array so cleanupLayers() never touches them
+  let poiMarkers: maplibregl.Marker[] = [];
 
   // Animation frame IDs for cleanup
   let animationFrameIds: number[] = [];
@@ -689,9 +696,126 @@
       }
       pulseAnimationId = requestAnimationFrame(animatePulse);
 
+      // ── POI landmark markers (permanent — not cleaned up by clearRoutes) ──
+      initLandmarkMarkers();
+
+      // ── Dev coord picker: click map → show [lng, lat] for landmarks.ts ──
+      map.on('click', (e) => {
+        const lng = e.lngLat.lng.toFixed(7);
+        const lat = e.lngLat.lat.toFixed(7);
+        devCoords = `[${lng}, ${lat}]`;
+        devCopied = false;
+      });
+
       updateMap();
     });
   });
+
+  // ── Landmark marker helpers ──
+
+  function createLandmarkMarkerEl(
+    name: string,
+    category: keyof typeof CATEGORY_COLOR,
+    isPrimary: boolean
+  ): HTMLDivElement {
+    const color  = CATEGORY_COLOR[category];
+    const size   = isPrimary ? 48 : 36;
+    const stroke = isPrimary ? 26 : 20;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;user-select:none;-webkit-user-select:none;';
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+      width:${size}px;height:${size}px;
+      background:white;
+      border-radius:${isPrimary ? 12 : 9}px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.07);
+      display:flex;align-items:center;justify-content:center;
+      transition:transform 0.15s ease,box-shadow 0.15s ease;
+    `;
+    card.innerHTML = `<svg width="${stroke}" height="${stroke}" viewBox="0 0 24 24" fill="none"
+      stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      ${CATEGORY_ICON[category]}
+    </svg>`;
+
+    wrapper.appendChild(card);
+
+    // Label — always created; secondary labels start hidden (shown at zoom 13+)
+    const label = document.createElement('div');
+    label.className = 'poi-label';
+    label.style.cssText = `
+      margin-top:3px;
+      font-size:${isPrimary ? 11 : 10}px;font-weight:700;
+      color:#1c1b1d;
+      text-align:center;
+      white-space:normal;
+      max-width:110px;
+      max-height:28px;
+      overflow:hidden;
+      line-height:1.2;
+      word-break:break-word;
+      text-shadow:-1px -1px 0 white,1px -1px 0 white,-1px 1px 0 white,1px 1px 0 white,0 0 6px rgba(255,255,255,0.9);
+      font-family:'DM Sans',system-ui,sans-serif;
+      pointer-events:none;
+    `;
+    // All labels start hidden — updateLandmarkVisibility sets correct state on load
+    label.style.display = 'none';
+    label.textContent = name;
+    wrapper.appendChild(label);
+
+    wrapper.addEventListener('mouseenter', () => {
+      card.style.transform = 'scale(1.12)';
+      card.style.boxShadow = `0 4px 16px rgba(0,0,0,0.22),0 0 0 1.5px ${color}55`;
+    });
+    wrapper.addEventListener('mouseleave', () => {
+      card.style.transform = 'scale(1)';
+      card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.07)';
+    });
+
+    return wrapper;
+  }
+
+  function updateLandmarkVisibility() {
+    if (!map) return;
+    const z = map.getZoom();
+    poiMarkers.forEach((marker, i) => {
+      const lm = landmarks[i];
+      const wrapper = marker.getElement();
+      const label = wrapper.querySelector('.poi-label') as HTMLElement | null;
+
+      if (lm.tier === 'secondary') {
+        const showMarker = z >= 13;
+        wrapper.style.display = showMarker ? '' : 'none';
+        if (label) label.style.display = z >= 15 ? '' : 'none';
+      } else {
+        // Primary: icon always visible; label only when zoomed in close
+        if (label) label.style.display = z >= 14 ? '' : 'none';
+      }
+    });
+  }
+
+  function initLandmarkMarkers() {
+    landmarks.forEach(lm => {
+      const isPrimary = lm.tier === 'primary';
+      const el = createLandmarkMarkerEl(lm.name, lm.category, isPrimary);
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        landmarkStore.open(lm);
+      });
+
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat(lm.coordinates)
+        .addTo(map);
+
+      poiMarkers.push(marker);
+    });
+
+    // Set initial visibility (default zoom 12 → secondary hidden)
+    updateLandmarkVisibility();
+    map.on('zoom', updateLandmarkVisibility);
+  }
 
   // Update user location source when it changes + center on first fix
   $effect(() => {
@@ -718,6 +842,7 @@
     unsubscribe();
     animationFrameIds.forEach(id => cancelAnimationFrame(id));
     if (pulseAnimationId !== null) cancelAnimationFrame(pulseAnimationId);
+    poiMarkers.forEach(m => m.remove());
     if (map) map.remove();
   });
 </script>
@@ -725,3 +850,22 @@
 <div class="absolute inset-0 z-0 h-full w-full">
   <div bind:this={mapContainer} class="h-full w-full bg-background-app"></div>
 </div>
+
+{#if devCoords}
+  <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2
+              rounded-full bg-black/80 px-4 py-2 shadow-xl backdrop-blur-sm">
+    <code class="text-[13px] text-white font-mono select-all">{devCoords}</code>
+    <button
+      onclick={async () => {
+        await navigator.clipboard.writeText(devCoords!);
+        devCopied = true;
+        setTimeout(() => { devCopied = false; }, 1500);
+      }}
+      class="text-[12px] px-2.5 py-1 rounded-full font-semibold transition-colors
+             {devCopied ? 'bg-green-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}"
+    >
+      {devCopied ? '✓' : 'Copiar'}
+    </button>
+    <button onclick={() => devCoords = null} class="text-white/50 hover:text-white text-[16px] leading-none">×</button>
+  </div>
+{/if}

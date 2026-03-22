@@ -8,6 +8,7 @@
   import RouteStepsCard from './RouteStepsCard.svelte';
   import RouteOptionsTabs from './RouteOptionsTabs.svelte';
   import { calcTotalFare } from '$lib/data/fareRules';
+  import { landmarkStore } from '$lib/stores/landmarkStore';
 
   marked.setOptions({ breaks: true });
 
@@ -389,6 +390,17 @@
     input = text;
     handleSubmit(new Event('submit') as any);
   }
+
+  // Consume route requests triggered from LandmarkModal
+  const unsubLandmark = landmarkStore.subscribe(s => {
+    if (!s.pendingRouteQuery || isStreaming || isRouteLoading) return;
+    const query = s.pendingRouteQuery;
+    landmarkStore.clearRoute();
+    if (sheetMode === 'compact') springTo(halfH);
+    submitSuggestion(query);
+  });
+
+  onDestroy(unsubLandmark);
 </script>
 
 <!--
