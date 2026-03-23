@@ -201,7 +201,7 @@ export const knownPlaces: Record<string, [number, number]> = {
   'niños héroes':           [-100.31111, 25.71722],
   'regina':                 [-100.31410, 25.70790],
   'general anaya':          [-100.31667, 25.69694],
-  'alameda':                [-100.31833, 25.67694],
+  'alameda metro':          [-100.31833, 25.67694],
   'fundadores':             [-100.31970, 25.67267],
   'padre mier':             [-100.31544, 25.66888],
   'zaragoza':               [-100.31028, 25.66778],

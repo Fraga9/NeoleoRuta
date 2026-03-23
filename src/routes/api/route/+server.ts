@@ -69,7 +69,10 @@ function fastNLU(message: string): { origin?: string; destination?: string } | n
   if (m3b) return { destination: m3b[1].trim() };
 
   // Pattern 4: Implicit destination — bare place name that exists in knownPlaces
-  if (resolveCoordinates(raw)) {
+  // Only match short inputs (≤4 words) that don't look like questions
+  const wordCount = raw.split(/\s+/).length;
+  const looksLikeQuestion = /^[¿?]|(?:^|\s)(?:qu[eé]|c[oó]mo|cu[aá]l|d[oó]nde|por\s*qu[eé]|cu[aá]nto)/i.test(m);
+  if (wordCount <= 4 && !looksLikeQuestion && resolveCoordinates(raw)) {
     return { destination: raw };
   }
 
