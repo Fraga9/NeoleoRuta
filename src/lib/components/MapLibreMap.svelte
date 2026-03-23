@@ -3,7 +3,7 @@
   import maplibregl from 'maplibre-gl';
   import { mapStore, type MapState } from '$lib/stores/mapStore';
   import { transitRoutes, type RouteId } from '$lib/data/transitRoutes';
-  import { landmarks, CATEGORY_COLOR, CATEGORY_ICON } from '$lib/data/landmarks';
+  import { landmarks, CATEGORY_COLOR, CATEGORY_ICON, type Landmark } from '$lib/data/landmarks';
   import { landmarkStore } from '$lib/stores/landmarkStore';
   import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -713,15 +713,39 @@
 
   // ── Landmark marker helpers ──
 
-  function createLandmarkMarkerEl(
-    name: string,
-    category: keyof typeof CATEGORY_COLOR,
-    isPrimary: boolean
-  ): HTMLDivElement {
+  // Index of the currently active (selected) POI marker; -1 = none
+  let activePoiIdx = -1;
+
+  // NOTE: Never apply position:relative to the marker element — MapLibre bug #4048
+  // causes position drift on zoom when position:relative is set on the marker element.
+  // The wrapper uses display:flex (no positioning) which is safe.
+  function setMarkerActive(idx: number, active: boolean) {
+    if (idx < 0 || idx >= poiMarkers.length) return;
+    const card = poiMarkers[idx].getElement().firstElementChild as HTMLElement | null;
+    if (!card) return;
+    const color = CATEGORY_COLOR[landmarks[idx].category];
+    card.dataset.active = active ? '1' : '0';
+    if (active) {
+      card.style.transform = 'scale(1.2)';
+      card.style.boxShadow = `0 4px 20px rgba(0,0,0,0.28),0 0 0 2.5px ${color}`;
+    } else {
+      card.style.transform = 'scale(1)';
+      card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.07)';
+    }
+  }
+
+  function createLandmarkMarkerEl(lm: Landmark): HTMLDivElement {
+    const { name, category, tier, svg } = lm;
+    const isPrimary = tier === 'primary';
     const color  = CATEGORY_COLOR[category];
     const size   = isPrimary ? 48 : 36;
-    const stroke = isPrimary ? 26 : 20;
+    const iconSz = isPrimary ? 26 : 20;
+    const iconPaths = svg ?? CATEGORY_ICON[category];
 
+    // Wrapper: display:flex only — no position:relative (MapLibre bug #4048).
+    // anchor:'bottom' pins the wrapper's bottom to the coordinate.
+    // Labels use nowrap so all wrappers of the same tier have identical height,
+    // keeping every card at the same pixel offset from its coordinate.
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;user-select:none;-webkit-user-select:none;';
 
@@ -732,43 +756,42 @@
       border-radius:${isPrimary ? 12 : 9}px;
       box-shadow:0 2px 8px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.07);
       display:flex;align-items:center;justify-content:center;
-      transition:transform 0.15s ease,box-shadow 0.15s ease;
+      transition:transform 0.18s ease,box-shadow 0.18s ease;
     `;
-    card.innerHTML = `<svg width="${stroke}" height="${stroke}" viewBox="0 0 24 24" fill="none"
+    card.dataset.active = '0';
+    card.innerHTML = `<svg width="${iconSz}" height="${iconSz}" viewBox="0 0 24 24" fill="none"
       stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      ${CATEGORY_ICON[category]}
+      ${iconPaths}
     </svg>`;
-
     wrapper.appendChild(card);
 
-    // Label — always created; secondary labels start hidden (shown at zoom 13+)
+    // nowrap enforces single-line labels → consistent wrapper height per tier
     const label = document.createElement('div');
     label.className = 'poi-label';
     label.style.cssText = `
       margin-top:3px;
       font-size:${isPrimary ? 11 : 10}px;font-weight:700;
       color:#1c1b1d;
-      text-align:center;
-      white-space:normal;
-      max-width:110px;
-      max-height:28px;
+      white-space:nowrap;
       overflow:hidden;
+      text-overflow:ellipsis;
+      max-width:110px;
       line-height:1.2;
-      word-break:break-word;
       text-shadow:-1px -1px 0 white,1px -1px 0 white,-1px 1px 0 white,1px 1px 0 white,0 0 6px rgba(255,255,255,0.9);
       font-family:'DM Sans',system-ui,sans-serif;
       pointer-events:none;
     `;
-    // All labels start hidden — updateLandmarkVisibility sets correct state on load
     label.style.display = 'none';
     label.textContent = name;
     wrapper.appendChild(label);
 
     wrapper.addEventListener('mouseenter', () => {
+      if (card.dataset.active === '1') return;
       card.style.transform = 'scale(1.12)';
       card.style.boxShadow = `0 4px 16px rgba(0,0,0,0.22),0 0 0 1.5px ${color}55`;
     });
     wrapper.addEventListener('mouseleave', () => {
+      if (card.dataset.active === '1') return;
       card.style.transform = 'scale(1)';
       card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.07)';
     });
@@ -785,11 +808,9 @@
       const label = wrapper.querySelector('.poi-label') as HTMLElement | null;
 
       if (lm.tier === 'secondary') {
-        const showMarker = z >= 13;
-        wrapper.style.display = showMarker ? '' : 'none';
-        if (label) label.style.display = z >= 15 ? '' : 'none';
+        wrapper.style.display = z >= 15 ? '' : 'none';
+        if (label) label.style.display = z >= 16 ? '' : 'none';
       } else {
-        // Primary: icon always visible; label only when zoomed in close
         if (label) label.style.display = z >= 14 ? '' : 'none';
       }
     });
@@ -797,15 +818,18 @@
 
   function initLandmarkMarkers() {
     landmarks.forEach(lm => {
-      const isPrimary = lm.tier === 'primary';
-      const el = createLandmarkMarkerEl(lm.name, lm.category, isPrimary);
+      const el = createLandmarkMarkerEl(lm);
 
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         landmarkStore.open(lm);
       });
 
-      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+      // anchor:'top' + offset upward by card height → card bottom lands on coordinate.
+      // Label hangs below via flex but doesn't affect the top-anchor calculation,
+      // so positioning is stable regardless of label height or visibility.
+      const cardSize = lm.tier === 'primary' ? 48 : 36;
+      const marker = new maplibregl.Marker({ element: el, anchor: 'top', offset: [0, -cardSize] })
         .setLngLat(lm.coordinates)
         .addTo(map);
 
@@ -816,6 +840,33 @@
     updateLandmarkVisibility();
     map.on('zoom', updateLandmarkVisibility);
   }
+
+  // Subscribe to landmarkStore: activate marker + easeTo when a landmark opens
+  const unsubLandmarkActive = landmarkStore.subscribe(s => {
+    if (!mapLoaded) return;
+
+    // Deactivate previous marker
+    if (activePoiIdx >= 0) {
+      setMarkerActive(activePoiIdx, false);
+      activePoiIdx = -1;
+    }
+
+    if (!s.activeLandmark) return;
+
+    // Find and activate the matching marker
+    const idx = landmarks.findIndex(l => l.id === s.activeLandmark!.id);
+    if (idx < 0) return;
+    activePoiIdx = idx;
+    setMarkerActive(idx, true);
+
+    // Ease map so marker is in the upper portion of screen, clear of the modal
+    map.easeTo({
+      center: s.activeLandmark.coordinates,
+      zoom: Math.max(map.getZoom(), 13),
+      offset: [0, -120],
+      duration: 420,
+    });
+  });
 
   // Update user location source when it changes + center on first fix
   $effect(() => {
@@ -840,6 +891,7 @@
 
   onDestroy(() => {
     unsubscribe();
+    unsubLandmarkActive();
     animationFrameIds.forEach(id => cancelAnimationFrame(id));
     if (pulseAnimationId !== null) cancelAnimationFrame(pulseAnimationId);
     poiMarkers.forEach(m => m.remove());

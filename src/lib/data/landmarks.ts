@@ -10,6 +10,8 @@ export interface Landmark {
   description: string;
   activities: string[];
   routeQueryName: string;
+  /** Custom illustrative SVG path(s) — 24×24 viewBox, stroke-based. Falls back to CATEGORY_ICON if absent. */
+  svg?: string;
 }
 
 export const CATEGORY_COLOR: Record<LandmarkCategory, string> = {
@@ -53,6 +55,8 @@ export const landmarks: Landmark[] = [
     description: 'Una de las plazas cívicas más grandes del mundo. Corazón histórico de Monterrey, rodeada de monumentos, museos y el icónico Faro del Comercio.',
     activities: ['Faro del Comercio (mirador nocturno)', 'Fuente de Neptuno', 'Museo de Historia Mexicana', 'Palacio de Gobierno', 'Catedral Metropolitana'],
     routeQueryName: 'Macroplaza',
+    // Faro del Comercio — obelisco rectangular con cortes horizontales
+    svg: '<rect x="10" y="2" width="4" height="20" rx="0.5"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="10" y1="13" x2="14" y2="13"/><line x1="7" y1="22" x2="17" y2="22"/>',
   },
   {
     id: 'estadio-bbva',
@@ -63,6 +67,8 @@ export const landmarks: Landmark[] = [
     description: 'Casa de los Rayados de Monterrey. Uno de los estadios más modernos de América Latina, con capacidad para más de 53,000 aficionados.',
     activities: ['Ver partidos de Rayados', 'Tour oficial del estadio', 'Museo Rayados', 'Zona comercial y gastronomía'],
     routeQueryName: 'Estadio BBVA',
+    // Cancha de fútbol vista aérea — estadio exterior, campo interior con líneas reglamentarias
+    svg: '<rect x="2" y="4" width="20" height="16" rx="6"/><rect x="5" y="7" width="14" height="10"/><line x1="12" y1="7" x2="12" y2="17"/><circle cx="12" cy="12" r="2"/><rect x="5" y="9.5" width="3" height="5"/><rect x="16" y="9.5" width="3" height="5"/>',
   },
   {
     id: 'parque-fundidora',
@@ -73,6 +79,8 @@ export const landmarks: Landmark[] = [
     description: 'Antiguo complejo siderúrgico convertido en parque urbano. Hogar del Horno 3, el Centro de las Artes y uno de los pulmones verdes más queridos de Monterrey.',
     activities: ['Museo del Acero Horno 3', 'Centro de las Artes', 'Pista de hielo (temporada)', 'Ciclismo y senderismo', 'Eventos culturales y conciertos'],
     routeQueryName: 'Parque Fundidora',
+    // Alto horno industrial — torre cónica con base ancha y chimeneas
+    svg: '<path d="M8 22V10l4-8 4 8v12H8z"/><line x1="6" y1="22" x2="18" y2="22"/><line x1="8" y1="15" x2="16" y2="15"/><line x1="9" y1="19" x2="15" y2="19"/>',
   },
   {
     id: 'barrio-antiguo',
@@ -83,6 +91,8 @@ export const landmarks: Landmark[] = [
     description: 'El barrio más bohemio y vibrante de Monterrey. Calles empedradas, galerías de arte, bares y vida nocturna que mezclan lo histórico con lo contemporáneo.',
     activities: ['Bares y cantinas históricas', 'Galerías de arte independiente', 'Cafeterías de especialidad', 'Mercado del Barrio', 'Música en vivo los fines de semana'],
     routeQueryName: 'Barrio Antiguo',
+    // Portal colonial con arco de medio punto y puerta doble
+    svg: '<path d="M4 22V11a8 8 0 0116 0v11"/><line x1="4" y1="22" x2="20" y2="22"/><path d="M10 22v-6a2 2 0 014 0v6"/><line x1="12" y1="3" x2="12" y2="5"/>',
   },
   {
     id: 'obispado',
@@ -93,6 +103,8 @@ export const landmarks: Landmark[] = [
     description: 'Antiguo palacio episcopal del siglo XVIII convertido en museo regional. Ofrece una de las vistas panorámicas más espectaculares de la ciudad.',
     activities: ['Museo Regional de Nuevo León', 'Mirador panorámico de Monterrey', 'Jardines y senderos del cerro', 'Fotografía urbana y arquitectónica'],
     routeQueryName: 'Obispado',
+    // Asta de bandera sobre el cerro — mástil, bandera ondeando, silueta de loma
+    svg: '<line x1="10" y1="2" x2="10" y2="16"/><path d="M10 3l9 3.5-9 3.5z"/><path d="M2 22c0-6 3-9 8-9s8 3 8 9"/>',
   },
   {
     id: 'alameda',
@@ -103,6 +115,8 @@ export const landmarks: Landmark[] = [
     description: 'El parque urbano más antiguo de Monterrey. Un espacio verde icónico en el corazón de la ciudad con lago, feria y ambiente familiar.',
     activities: ['Lago con lanchas de remo', 'Feria permanente y juegos', 'Puestos de comida típica', 'Caminar y ejercitarse', 'Zona de descanso y jardines'],
     routeQueryName: 'Alameda Mariano Escobedo',
+    // Tres pinos — árbol central más alto, dos laterales más bajos, línea de suelo
+    svg: '<path d="M4 17l3-8 3 8z"/><line x1="7" y1="17" x2="7" y2="21"/><path d="M8 17L12 4L16 17z"/><line x1="12" y1="17" x2="12" y2="21"/><path d="M14 17l3-8 3 8z"/><line x1="17" y1="17" x2="17" y2="21"/><line x1="2" y1="21" x2="22" y2="21"/>',
   },
   {
     id: 'horno3',
@@ -113,6 +127,8 @@ export const landmarks: Landmark[] = [
     description: 'Museo interactivo instalado en el antiguo alto horno de la Fundidora. Una experiencia única que cuenta la historia industrial y humana de Monterrey.',
     activities: ['Tour del alto horno histórico', 'Exposiciones interactivas de ciencia', 'Telecabina con vistas al parque', 'Tirolesa y actividades extremas', 'Experiencias 4D'],
     routeQueryName: 'Museo del Acero Horno 3',
+    // Alto horno con estructura de soporte y depósito esférico
+    svg: '<path d="M9 22v-9a3 3 0 016 0v9"/><path d="M7 22V14l-2-4h14l-2 4v8"/><line x1="5" y1="22" x2="19" y2="22"/><circle cx="12" cy="7" r="3"/>',
   },
   {
     id: 'museo-marco',
@@ -123,6 +139,8 @@ export const landmarks: Landmark[] = [
     description: 'Museo de Arte Contemporáneo de Monterrey. Uno de los recintos de arte moderno más importantes de América Latina, con colecciones permanentes e internacionales.',
     activities: ['Arte contemporáneo latinoamericano', 'Exposiciones internacionales rotativas', 'Café del museo', 'Tienda de arte y diseño', 'Eventos y talleres culturales'],
     routeQueryName: 'Museo Marco',
+    // Paloma en vuelo — Lucide bird icon (MIT), referencia escultura Juan Soriano en MARCO
+    svg: '<path d="M16 7h.01"/><path d="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 20"/><path d="m20 7 2 .5-2 .5"/><path d="M7 18a6 6 0 0 0 3.84-10.61"/>',
   },
   {
     id: 'cintermex',
@@ -133,6 +151,8 @@ export const landmarks: Landmark[] = [
     description: 'Centro Internacional de Negocios de Monterrey. Principal recinto para exposiciones, convenciones y eventos de talla internacional en el norte del país.',
     activities: ['Exposiciones y ferias comerciales', 'Conciertos y eventos masivos', 'Foro Cintermex', 'Zona de restaurantes y cafeterías'],
     routeQueryName: 'Cintermex',
+    // Logo Cintermex — triángulo con esfera interior y tres líneas de latitud curveadas
+    svg: '<path d="M12 2L2 22h20z"/><circle cx="12" cy="15" r="7"/><path d="M6 11Q12 15 18 11"/><path d="M5 15Q12 19.5 19 15"/><path d="M6 19Q12 22.5 18 19"/>',
   },
 
   // ── SECONDARY (visible desde zoom 13+) ──
@@ -165,6 +185,8 @@ export const landmarks: Landmark[] = [
     description: 'Canal peatonal de 2.5 km que conecta la Macroplaza con el Parque Fundidora. Ideal para paseos a pie, en barca o en bicicleta junto al río.',
     activities: ['Paseo en barca por el canal', 'Caminata y ciclovía peatonal', 'Restaurantes y terrazas', 'Esculturas y arte público', 'Fotografía del paisaje urbano'],
     routeQueryName: 'Paseo Santa Lucía',
+    // Canal con arco de puente — agua ondulante y puente peatonal característico
+    svg: '<path d="M2 12Q7 8 12 12Q17 16 22 12"/><path d="M2 17Q7 13 12 17Q17 21 22 17"/><line x1="8" y1="10" x2="8" y2="19"/><line x1="16" y1="10" x2="16" y2="19"/><path d="M8 10Q12 6 16 10"/>',
   },
   {
     id: 'museo-historia',
@@ -255,5 +277,7 @@ export const landmarks: Landmark[] = [
     description: 'Campus principal de la Universidad Autónoma de Nuevo León (UANL). Centro académico, cultural y deportivo con arquitectura moderna y amplios espacios verdes.',
     activities:  ['Paseos por el campus', 'Caminata y ciclovía peatonal', 'Restaurantes y terrazas', 'Esculturas y arte público', 'Fotografía del paisaje urbano'],
     routeQueryName: 'Ciudad Universitaria',
+    // "U" con serifs — letra universitaria clásica
+    svg: '<path d="M7 4v12a5 5 0 0010 0V4"/><line x1="4" y1="4" x2="10" y2="4"/><line x1="14" y1="4" x2="20" y2="4"/>',
   },
 ];

@@ -8,10 +8,22 @@
   // "Latched" landmark: only updates when a landmark is OPENED, never on close.
   // This keeps the content valid during the fly-out transition (when store is already null).
   let lm = $state<Landmark | null>(null);
+  let routeLoading = $state(false);
+
   const unsub = landmarkStore.subscribe(s => {
-    if (s.activeLandmark) lm = s.activeLandmark;
+    if (s.activeLandmark) {
+      lm = s.activeLandmark;
+      routeLoading = false; // reset when a new landmark opens
+    }
   });
   onDestroy(unsub);
+
+  function handleRouteRequest() {
+    if (routeLoading || !lm) return;
+    routeLoading = true;
+    // Brief delay so the loading state renders before the modal closes
+    setTimeout(() => landmarkStore.requestRoute(lm!.routeQueryName), 280);
+  }
 </script>
 
 <!--
@@ -71,7 +83,7 @@
               stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
               style="stroke:{CATEGORY_COLOR[lm.category]}"
             >
-              {@html CATEGORY_ICON[lm.category]}
+              {@html lm.svg ?? CATEGORY_ICON[lm.category]}
             </svg>
           </div>
           <h2 class="text-[21px] font-bold text-primary leading-tight">{lm.name}</h2>
@@ -96,15 +108,26 @@
 
         <!-- CTA -->
         <button
-          onclick={() => landmarkStore.requestRoute(lm!.routeQueryName)}
+          onclick={handleRouteRequest}
+          disabled={routeLoading}
           class="w-full flex items-center justify-center gap-2.5 rounded-[1.25rem] bg-primary py-3.5
-                 text-white font-semibold text-[15px] active:scale-[0.97] transition-transform shadow-sm"
+                 text-white font-semibold text-[15px] transition-all shadow-sm
+                 active:scale-[0.97] disabled:opacity-80 disabled:cursor-default"
         >
-          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-          </svg>
-          ¿Cómo llego aquí?
+          {#if routeLoading}
+            <!-- Spinner -->
+            <svg class="w-5 h-5 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+              <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            Buscando ruta…
+          {:else}
+            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+            </svg>
+            ¿Cómo llego aquí?
+          {/if}
         </button>
 
       </div>

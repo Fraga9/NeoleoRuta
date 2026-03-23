@@ -35,7 +35,15 @@
   $effect(() => { if (locationStatus === 'idle') requestLocation(); });
 
   // ── Panel State ──
-  let activePanel = $state<'none' | 'nearby' | 'payment' | 'recharge' | 'payment:urbani' | 'payment:memuevo'>('none');
+  let activePanel = $state<'none' | 'nearby' | 'all' | 'payment' | 'recharge' | 'payment:urbani' | 'payment:memuevo' | 'fares'>('none');
+
+  // ── Helper: Tarifa por ruta ──
+  function getRouteFare(id: string): string {
+    const base = id.replace(/-ida$/, '').replace(/-vuelta$/, '');
+    if (['metro-1', 'metro-2', 'metro-3', 'ecovia'].includes(base)) return '$9.90';
+    if (['ruta-209-olivos', 'ruta-220-pedregal', 'ruta-226-bosques', 'ruta-unidad-laredo'].includes(base)) return '$16.50';
+    return '$15';
+  }
 
   // ── Helper: Distancia ──
   function getDistance(coord1: [number, number], coord2: [number, number]) {
@@ -48,6 +56,87 @@
 
   // ── Panel Content ──
   const panelContent = $derived.by(() => {
+    if (activePanel === 'all') {
+      const routeIcon = 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4';
+      const metroIcon = 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6';
+      const routeGroups: Array<{ id: RouteId; badge: string; fare: string; iconPath: string }> = [
+        { id: 'metro-1',                          badge: 'Metro',           fare: '$9.90',  iconPath: metroIcon },
+        { id: 'metro-2',                          badge: 'Metro',           fare: '$9.90',  iconPath: metroIcon },
+        { id: 'metro-3',                          badge: 'Metro',           fare: '$9.90',  iconPath: metroIcon },
+        { id: 'ecovia',                           badge: 'Ecovía',          fare: '$9.90',  iconPath: metroIcon },
+        { id: 'transmetro-sendero-casco-ida',     badge: 'Transmetro',      fare: '$15',    iconPath: routeIcon },
+        { id: 'transmetro-sendero-miravista-ida', badge: 'Transmetro',      fare: '$15',    iconPath: routeIcon },
+        { id: 'transmetro-sendero-monterreal-ida',badge: 'Transmetro',      fare: '$15',    iconPath: routeIcon },
+        { id: 'transmetro-sendero-sn-apodaca-ida',badge: 'Transmetro',      fare: '$15',    iconPath: routeIcon },
+        { id: 'ruta-1-central-ida',               badge: 'Ruta Integrada',  fare: '$15',    iconPath: routeIcon },
+        { id: 'ruta-13-c4-ida',                   badge: 'Ruta Integrada',  fare: '$15',    iconPath: routeIcon },
+        { id: 'ruta-19-san-miguel-ida',           badge: 'Ruta Integrada',  fare: '$15',    iconPath: routeIcon },
+        { id: 'ruta-233-cumbres-ida',             badge: 'Ruta Integrada',  fare: '$15',    iconPath: routeIcon },
+        { id: 'ruta-233-uanl-ida',                badge: 'Ruta Integrada',  fare: '$15',    iconPath: routeIcon },
+        { id: 'ruta-209-olivos-ida',              badge: 'Ruta Express',    fare: '$16.50', iconPath: routeIcon },
+        { id: 'ruta-220-pedregal-ida',            badge: 'Ruta Express',    fare: '$16.50', iconPath: routeIcon },
+        { id: 'ruta-226-bosques-ida',             badge: 'Ruta Express',    fare: '$16.50', iconPath: routeIcon },
+        { id: 'ruta-unidad-laredo-ida',           badge: 'Ruta Express',    fare: '$16.50', iconPath: routeIcon },
+      ];
+      const items = routeGroups
+        .filter(g => transitRoutes[g.id])
+        .map(g => {
+          const r = transitRoutes[g.id];
+          return {
+            id: g.id,
+            title: r.label.replace(/ \(IDA\)$/, ''),
+            description: `Tarifa: ${g.fare}`,
+            color: r.color,
+            badge: g.badge,
+            iconPath: g.iconPath,
+            action: () => {
+              mapStore.clearRoutes();
+              mapStore.drawRoute(g.id);
+              activePanel = 'none';
+            }
+          };
+        });
+      return { title: 'Todas las Rutas', subtitle: 'Toca una ruta para verla en el mapa', items, footer: 'Tarifas con tarjeta Me Muevo · Efectivo puede variar' };
+    }
+
+    if (activePanel === 'fares') {
+      return {
+        title: 'Tarifas 2025',
+        subtitle: 'Precios con tarjeta Me Muevo',
+        items: [
+          {
+            id: 'c1', title: 'Metro / Ecovía',
+            description: 'Tarifa plena · Transferencia: $7.50',
+            extraInfo: '$9.90',
+            color: '#E5A52B', badge: 'Clase 1',
+            iconPath: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6'
+          },
+          {
+            id: 'c2', title: 'Transmetro',
+            description: 'Tarifa plena · Transferencia: $7.50',
+            extraInfo: '$15.00',
+            color: '#285A71', badge: 'Clase 2',
+            iconPath: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'
+          },
+          {
+            id: 'c3', title: 'Ruta Integrada',
+            description: 'Tarifa plena · Transferencia: $7.50',
+            extraInfo: '$15.00',
+            color: '#006064', badge: 'Clase 3',
+            iconPath: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'
+          },
+          {
+            id: 'c4', title: 'Ruta Express',
+            description: 'Tarifa plena · Transferencia: $8.25',
+            extraInfo: '$16.50',
+            color: '#7c3aed', badge: 'Clase 4',
+            iconPath: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'
+          }
+        ],
+        footer: 'Integración Me Muevo: 2° viaje 50% · 3° gratis · Metro→Metro sin costo adicional'
+      };
+    }
+
     if (activePanel === 'nearby') {
       if (!userLocation) return { title: 'Rutas Cercanas', subtitle: 'Buscando GPS...', items: [] };
       const items = Object.entries(transitRoutes)
@@ -57,7 +146,7 @@
           return {
             id,
             title: r.label,
-            description: `Parada: ${r.stations[dists.indexOf(min)].name}`,
+            description: `Parada: ${r.stations[dists.indexOf(min)].name} · Tarifa: ${getRouteFare(id)}`,
             extraInfo: min < 1000 ? `${Math.round(min)}m` : `${(min/1000).toFixed(1)}km`,
             color: r.color,
             badge: id.includes('metro') ? 'Metro' : 'Bus',
@@ -139,9 +228,11 @@
   });
 
   function handleMenuAction(id: string) {
-    if (id === 'nearby') activePanel = 'nearby';
-    if (id === 'payment') activePanel = 'payment';
+    if (id === 'nearby')   activePanel = 'nearby';
+    if (id === 'all')      activePanel = 'all';
+    if (id === 'payment')  activePanel = 'payment';
     if (id === 'recharge') activePanel = 'recharge';
+    if (id === 'fares')    activePanel = 'fares';
   }
 </script>
 
