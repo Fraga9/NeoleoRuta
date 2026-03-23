@@ -156,7 +156,7 @@ const TRANSIT_STATIONS = [
   { name: 'Penitenciaría',    coords: [-100.34250, 25.72333], routeId: 'metro-1' },
   { name: 'Alfonso Reyes',    coords: [-100.34250, 25.71611], routeId: 'metro-1' },
   { name: 'Mitras',           coords: [-100.34250, 25.70556], routeId: 'metro-1' },
-  { name: 'Simón Bolívar',    coords: [-100.33917, 25.69889], routeId: 'metro-1' },
+  { name: 'Simón Bolívar',    coords: [-100.3432070, 25.6986855], routeId: 'metro-1' },
   { name: 'Hospital',         coords: [-100.34417, 25.69194], routeId: 'metro-1' },
   { name: 'Edison',           coords: [-100.33361, 25.68694], routeId: 'metro-1' },
   { name: 'Central',          coords: [-100.32444, 25.68694], routeId: 'metro-1' },

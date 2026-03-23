@@ -181,7 +181,7 @@ export const knownPlaces: Record<string, [number, number]> = {
   'penitenciaría':          [-100.34250, 25.72333],
   'alfonso reyes':          [-100.34250, 25.71611],
   'mitras':                 [-100.34250, 25.70556],
-  'simón bolívar':          [-100.33917, 25.69889],
+  'simón bolívar':          [-100.3432070, 25.6986855],
   'hospital':               [-100.34417, 25.69194],
   'edison':                 [-100.33361, 25.68694],
   'central':                [-100.32444, 25.68694],

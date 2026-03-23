@@ -5,6 +5,7 @@
   import HamburgerMenu from '$lib/components/HamburgerMenu.svelte';
   import ActionPanel from '$lib/components/ActionPanel.svelte';
   import LandmarkModal from '$lib/components/LandmarkModal.svelte';
+  import RouteInfoCard, { type ActiveRouteInfo } from '$lib/components/RouteInfoCard.svelte';
   import { transitRoutes, type RouteId } from '$lib/data/transitRoutes';
   import { mapStore } from '$lib/stores/mapStore';
 
@@ -37,12 +38,54 @@
   // ── Panel State ──
   let activePanel = $state<'none' | 'nearby' | 'all' | 'payment' | 'recharge' | 'payment:urbani' | 'payment:memuevo' | 'fares'>('none');
 
+  // ── Active Route ──
+  let activeRoute = $state<ActiveRouteInfo | null>(null);
+
+  function closeRoute() {
+    activeRoute = null;
+    mapStore.clearRoutes();
+  }
+
+  // ── Helper: Badge por ruta ──
+  function getBadge(base: string): string {
+    if (['metro-1', 'metro-2', 'metro-3'].includes(base)) return 'Metro';
+    if (base === 'ecovia') return 'Ecovía';
+    if (base.startsWith('transmetro-')) return 'Transmetro';
+    if (['ruta-209-olivos', 'ruta-220-pedregal', 'ruta-226-bosques', 'ruta-unidad-laredo'].includes(base)) return 'Ruta Express';
+    return 'Ruta Integrada';
+  }
+
   // ── Helper: Tarifa por ruta ──
   function getRouteFare(id: string): string {
     const base = id.replace(/-ida$/, '').replace(/-vuelta$/, '');
     if (['metro-1', 'metro-2', 'metro-3', 'ecovia'].includes(base)) return '$9.90';
     if (['ruta-209-olivos', 'ruta-220-pedregal', 'ruta-226-bosques', 'ruta-unidad-laredo'].includes(base)) return '$16.50';
     return '$15';
+  }
+
+  // ── Abrir ruta en mapa + mostrar RouteInfoCard ──
+  function openRoute(routeId: string) {
+    const base = routeId.replace(/-ida$/, '').replace(/-vuelta$/, '');
+    const isMeta = ['metro-1', 'metro-2', 'metro-3', 'ecovia'].includes(base);
+    const hasDirections = !isMeta;
+    const displayId = (hasDirections ? `${base}-ida` : base) as RouteId;
+    const r = transitRoutes[displayId] ?? transitRoutes[base as RouteId];
+    if (!r) return;
+    mapStore.clearRoutes();
+    mapStore.drawRoute(displayId);
+    activeRoute = {
+      baseId: base,
+      hasDirections,
+      direction: 'ida',
+      label: r.label.replace(/ \(IDA\)$/, '').replace(/ \(VUELTA\)$/, ''),
+      color: r.color,
+      fare: getRouteFare(base),
+      badge: getBadge(base),
+      stationsCount: r.stations.length,
+      firstStop: r.stations[0].name,
+      lastStop: r.stations[r.stations.length - 1].name,
+    };
+    activePanel = 'none';
   }
 
   // ── Helper: Distancia ──
@@ -89,11 +132,7 @@
             color: r.color,
             badge: g.badge,
             iconPath: g.iconPath,
-            action: () => {
-              mapStore.clearRoutes();
-              mapStore.drawRoute(g.id);
-              activePanel = 'none';
-            }
+            action: () => openRoute(g.id)
           };
         });
       return { title: 'Todas las Rutas', subtitle: 'Toca una ruta para verla en el mapa', items, footer: 'Tarifas con tarjeta Me Muevo · Efectivo puede variar' };
@@ -139,29 +178,32 @@
 
     if (activePanel === 'nearby') {
       if (!userLocation) return { title: 'Rutas Cercanas', subtitle: 'Buscando GPS...', items: [] };
-      const items = Object.entries(transitRoutes)
-        .map(([id, r]) => {
-          const dists = r.stations.map(s => getDistance(userLocation!, s.coordinates));
-          const min = Math.min(...dists);
-          return {
-            id,
-            title: r.label,
-            description: `Parada: ${r.stations[dists.indexOf(min)].name} · Tarifa: ${getRouteFare(id)}`,
-            extraInfo: min < 1000 ? `${Math.round(min)}m` : `${(min/1000).toFixed(1)}km`,
-            color: r.color,
-            badge: id.includes('metro') ? 'Metro' : 'Bus',
-            iconPath: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4',
-            rawDist: min,
-            action: () => {
-              mapStore.clearRoutes();
-              mapStore.drawRoute(id as RouteId);
-              activePanel = 'none';
-            }
-          };
-        })
-        .filter(i => i.rawDist < 1200)
-        .sort((a, b) => a.rawDist - b.rawDist);
-      return { title: 'Rutas Cercanas', subtitle: 'A menos de 1km de ti', items, footer: 'Haz clic en una ruta para verla en el mapa' };
+      // Group by base route — keep closest direction to avoid showing IDA + VUELTA duplicates
+      const routeMap = new Map<string, { id: string; r: typeof transitRoutes[RouteId]; dist: number; closestStop: string }>();
+      for (const [id, r] of Object.entries(transitRoutes)) {
+        const dists = r.stations.map(s => getDistance(userLocation!, s.coordinates));
+        const min = Math.min(...dists);
+        const base = id.replace(/-ida$/, '').replace(/-vuelta$/, '');
+        const existing = routeMap.get(base);
+        if (!existing || min < existing.dist) {
+          routeMap.set(base, { id, r, dist: min, closestStop: r.stations[dists.indexOf(min)].name });
+        }
+      }
+      const items = Array.from(routeMap.entries())
+        .filter(([, v]) => v.dist < 1200)
+        .sort(([, a], [, b]) => a.dist - b.dist)
+        .map(([base, v]) => ({
+          id: base,
+          title: v.r.label.replace(/ \(IDA\)$/, '').replace(/ \(VUELTA\)$/, ''),
+          description: `Parada: ${v.closestStop} · Tarifa: ${getRouteFare(base)}`,
+          extraInfo: v.dist < 1000 ? `${Math.round(v.dist)}m` : `${(v.dist / 1000).toFixed(1)}km`,
+          color: v.r.color,
+          badge: getBadge(base),
+          iconPath: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4',
+          rawDist: v.dist,
+          action: () => openRoute(v.id)
+        }));
+      return { title: 'Rutas Cercanas', subtitle: 'A menos de 1km de ti', items, footer: 'Toca una ruta para verla en el mapa' };
     }
 
     if (activePanel === 'payment') {
@@ -254,6 +296,20 @@
     footerText={panelContent.footer}
   />
 
-  <ChatInterface externalUserLocation={userLocation} externalLocationStatus={locationStatus} onLocationRequest={requestLocation} />
+  <!-- Cross-fade: chat ↔ route card share the same bottom-sheet space -->
+  <div class="chat-crossfade" class:chat-hidden={!!activeRoute}>
+    <ChatInterface externalUserLocation={userLocation} externalLocationStatus={locationStatus} onLocationRequest={requestLocation} />
+  </div>
+  <RouteInfoCard route={activeRoute} onClose={closeRoute} />
   <LandmarkModal />
 </main>
+
+<style>
+  .chat-crossfade {
+    transition: opacity 350ms ease-out;
+  }
+  .chat-hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+</style>

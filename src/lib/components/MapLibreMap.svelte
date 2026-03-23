@@ -687,7 +687,7 @@
       let pulseRadius = 20;
       function animatePulse() {
         if (!map || !map.getLayer('user-location-pulse')) return;
-        pulseRadius += pulseGrowing ? 0.5 : -0.5;
+        pulseRadius += pulseGrowing ? 0.18 : -0.18;
         if (pulseRadius >= 40) pulseGrowing = false;
         if (pulseRadius <= 20) pulseGrowing = true;
         map.setPaintProperty('user-location-pulse', 'circle-radius', pulseRadius);

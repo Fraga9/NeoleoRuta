@@ -73,7 +73,7 @@ const coreRoutes: Record<string, TransitRoute> = {
       { name: 'Penitenciaría',    coordinates: [-100.34250, 25.72333] },
       { name: 'Alfonso Reyes',    coordinates: [-100.34250, 25.71611] },
       { name: 'Mitras',           coordinates: [-100.34250, 25.70556] },
-      { name: 'Simón Bolívar',    coordinates: [-100.33917, 25.69889] },
+      { name: 'Simón Bolívar',    coordinates: [-100.3432070, 25.6986855] },
       { name: 'Hospital',         coordinates: [-100.34417, 25.69194] },
       { name: 'Edison',           coordinates: [-100.33361, 25.68694] },
       { name: 'Central',          coordinates: [-100.32444, 25.68694] },
