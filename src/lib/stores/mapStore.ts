@@ -14,9 +14,11 @@ export interface MapState {
   routes: RouteId[];
   origin: JourneyPoint | null;
   destination: JourneyPoint | null;
-  boardingStations: string[];   // station names to highlight as "board here"
-  alightingStations: string[];  // station names to highlight as "get off here"
-  walkSegments: WalkSegment[];  // real street paths for walk legs (from OSRM)
+  boardingStations: string[];   // ordered list: boardingStations[i] pairs with alightingStations[i]
+  alightingStations: string[];
+  // Direct route→segment lookup — eliminates fuzzy search bugs when routes share station names
+  segmentMap: Record<string, { board: string; alight: string }>;
+  walkSegments: WalkSegment[];
   userLocation: [number, number] | null;
 }
 
@@ -26,6 +28,7 @@ const initialState: MapState = {
   destination: null,
   boardingStations: [],
   alightingStations: [],
+  segmentMap: {},
   walkSegments: [],
   userLocation: null,
 };
@@ -42,6 +45,34 @@ function createMapStore() {
         }
         return state;
       });
+    },
+    // Applies a complete route plan atomically — single store update so updateMap()
+    // fires exactly once with all routes, stations, and walk geometries in place.
+    applyPlan: (params: {
+      routes: string[];
+      origin: JourneyPoint;
+      destination: JourneyPoint;
+      boardingStations: string[];
+      alightingStations: string[];
+      walkGeometries: GeoJSON.LineString[];
+    }) => {
+      const segmentMap: Record<string, { board: string; alight: string }> = {};
+      params.routes.forEach((routeId, i) => {
+        segmentMap[routeId] = {
+          board: params.boardingStations[i],
+          alight: params.alightingStations[i],
+        };
+      });
+      update(state => ({
+        ...state,
+        routes: params.routes as RouteId[],
+        origin: params.origin,
+        destination: params.destination,
+        boardingStations: params.boardingStations,
+        alightingStations: params.alightingStations,
+        segmentMap,
+        walkSegments: params.walkGeometries.map(g => ({ geometry: g })),
+      }));
     },
     setJourney: (origin: JourneyPoint | null, destination: JourneyPoint | null, boarding: string[], alighting: string[]) => {
       update(state => ({

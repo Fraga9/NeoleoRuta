@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fly } from 'svelte/transition';
+  import { fly, fade } from 'svelte/transition';
   import { onDestroy } from 'svelte';
   import { landmarkStore } from '$lib/stores/landmarkStore';
   import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_ICON } from '$lib/data/landmarks';
@@ -13,7 +13,7 @@
   const unsub = landmarkStore.subscribe(s => {
     if (s.activeLandmark) {
       lm = s.activeLandmark;
-      routeLoading = false; // reset when a new landmark opens
+      routeLoading = false;
     }
   });
   onDestroy(unsub);
@@ -34,6 +34,7 @@
 {#if $landmarkStore.activeLandmark}
   <div
     class="fixed inset-0 z-[34] bg-black/25"
+    transition:fade={{ duration: 220 }}
     onclick={() => landmarkStore.close()}
     role="button"
     tabindex="-1"

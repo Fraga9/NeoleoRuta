@@ -296,20 +296,12 @@
     footerText={panelContent.footer}
   />
 
-  <!-- Cross-fade: chat ↔ route card share the same bottom-sheet space -->
-  <div class="chat-crossfade" class:chat-hidden={!!activeRoute}>
-    <ChatInterface externalUserLocation={userLocation} externalLocationStatus={locationStatus} onLocationRequest={requestLocation} />
-  </div>
+  <ChatInterface
+    externalUserLocation={userLocation}
+    externalLocationStatus={locationStatus}
+    onLocationRequest={requestLocation}
+    hidden={!!activeRoute}
+  />
   <RouteInfoCard route={activeRoute} onClose={closeRoute} />
   <LandmarkModal />
 </main>
-
-<style>
-  .chat-crossfade {
-    transition: opacity 350ms ease-out;
-  }
-  .chat-hidden {
-    opacity: 0;
-    pointer-events: none;
-  }
-</style>

@@ -271,22 +271,9 @@
     return best;
   }
 
-  /**
-   * Find the (board, alight) pair for a route using index-matched lookup.
-   * boardingStations[i] and alightingStations[i] are always paired (same transit step).
-   * Independent `find` breaks for multi-leg trips where a station (e.g. "Sendero")
-   * appears in both arrays at different indices.
-   */
+  /** Direct lookup of the (board, alight) pair for a route from the segmentMap. */
   function findSegmentPair(routeId: RouteId): { board: string; alight: string } | null {
-    const route = transitRoutes[routeId];
-    for (let i = 0; i < mapState.boardingStations.length; i++) {
-      const b = mapState.boardingStations[i];
-      const a = mapState.alightingStations[i];
-      if (route.stations.some(s => s.name === b) && route.stations.some(s => s.name === a)) {
-        return { board: b, alight: a };
-      }
-    }
-    return null;
+    return mapState.segmentMap[routeId] ?? null;
   }
 
   /** Slice the route GeoJSON to only the boarding→alighting segment. Falls back to full line. */

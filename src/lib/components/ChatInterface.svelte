@@ -16,12 +16,14 @@
     externalUserLocation: [number, number] | null;
     externalLocationStatus: 'idle' | 'requesting' | 'granted' | 'denied';
     onLocationRequest: () => void;
+    hidden?: boolean;
   }
 
   let {
     externalUserLocation: userLocation,
     externalLocationStatus: locationStatus,
     onLocationRequest: requestLocation,
+    hidden = false,
   } = $props<Props>();
 
   // ── DOM refs ──
@@ -220,15 +222,25 @@
   const isStreaming = $derived(chat.status === 'streaming' || chat.status === 'submitted');
   let isRouteLoading = $state(false);
 
-  const allMessages = $derived([
-    ...routeMessages.map(m => ({ ...m, source: 'route' as const })),
-    ...chat.messages.map((m: any) => ({
+  // Track when each message ID is first seen to sort both arrays chronologically.
+  // Plain Map (not reactive) — intentional: we only need it to influence the $derived sort.
+  const msgFirstSeen = new Map<string, number>();
+  function msgTs(id: string): number {
+    if (!msgFirstSeen.has(id)) msgFirstSeen.set(id, Date.now());
+    return msgFirstSeen.get(id)!;
+  }
+
+  const allMessages = $derived.by(() => {
+    const routeMsgs = routeMessages.map(m => ({ ...m, source: 'route' as const, _ts: msgTs(m.id) }));
+    const chatMsgs = chat.messages.map((m: any) => ({
       id: m.id,
       role: m.role,
       text: m.parts?.filter((p: any) => p.type === 'text').map((p: any) => p.text).join('\n\n') || m.content || '',
       source: 'chat' as const,
-    })),
-  ]);
+      _ts: msgTs(m.id),
+    }));
+    return [...routeMsgs, ...chatMsgs].sort((a, b) => a._ts - b._ts);
+  });
 
   const lastAssistantPreview = $derived.by(() => {
     const msgs = allMessages.filter(m => m.role === 'assistant');
@@ -366,17 +378,16 @@
   }
 
   function applyRoutePlan(plan: any) {
-    for (const routeId of plan.linesUsed) mapStore.drawRoute(routeId as RouteId);
-    mapStore.setJourney(
-      { name: plan.origin.name, coordinates: plan.origin.coords },
-      { name: plan.destination.name, coordinates: plan.destination.coords },
-      plan.boardingStations, plan.alightingStations,
-    );
-    for (const s of plan.boardingStations) mapStore.addStationHighlight(s, 'board');
-    for (const s of plan.alightingStations) mapStore.addStationHighlight(s, 'alight');
-    for (const step of plan.steps) {
-      if (step.type === 'walk' && step.walkGeometry) mapStore.addWalkSegment(step.walkGeometry);
-    }
+    mapStore.applyPlan({
+      routes: plan.linesUsed,
+      origin: { name: plan.origin.name, coordinates: plan.origin.coords },
+      destination: { name: plan.destination.name, coordinates: plan.destination.coords },
+      boardingStations: plan.boardingStations,
+      alightingStations: plan.alightingStations,
+      walkGeometries: plan.steps
+        .filter((s: any) => s.type === 'walk' && s.walkGeometry)
+        .map((s: any) => s.walkGeometry),
+    });
   }
 
   const suggestions = [
@@ -396,8 +407,9 @@
     if (!s.pendingRouteQuery || isStreaming || isRouteLoading) return;
     const query = s.pendingRouteQuery;
     landmarkStore.clearRoute();
-    if (sheetMode === 'compact') springTo(halfH);
     submitSuggestion(query);
+    // Delay spring so the modal sheet finishes flying out before we rise
+    if (sheetMode === 'compact') setTimeout(() => springTo(halfH), 200);
   });
 
   onDestroy(unsubLandmark);
@@ -422,6 +434,8 @@
 <div
   bind:this={cardEl}
   class="sheet-card fixed left-0 right-0 z-20 mx-auto flex flex-col overflow-hidden bg-white/97 backdrop-blur-2xl"
+  style:visibility={hidden ? 'hidden' : 'visible'}
+  style:pointer-events={hidden ? 'none' : 'auto'}
   style:bottom={targetMode === 'full' ? '0' : BOTTOM_GAP + 'px'}
   style:width={targetMode === 'full' ? '100%' : 'min(calc(100vw - 24px), 32rem)'}
   style:border-radius={targetMode === 'full' ? '1.25rem 1.25rem 0 0' : '1.75rem'}
