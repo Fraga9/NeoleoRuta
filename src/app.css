@@ -1,24 +1,52 @@
 @import "tailwindcss";
 
 @theme {
-  /* Material 3 Expressive Custom Palette */
+  /* ── Paleta original RegioRuta ── */
   --color-primary: #285A71;
+  --color-on-primary: #FFFFFF;
+  --color-primary-container: #C2D9E4;
+  --color-on-primary-container: #001E2C;
+
   --color-secondary: #CFDA5A;
+  --color-on-secondary: #313300;
+  --color-secondary-container: #E8F475;
+  --color-on-secondary-container: #1C1D00;
+
+  --color-surface: #FFFFFF;
+  --color-on-surface: #1C1B1D;
+  --color-surface-container-high: #F2F2F7;
+  --color-surface-container-highest: #FFFFFF;
+  --color-outline-variant: #E5E7EB;
+
   --color-background-app: #FCE4C0;
-  
+
   --font-sans: 'DM Sans', system-ui, sans-serif;
-  
+
   --radius-xl: 1.5rem;
   --radius-2xl: 2rem;
   --radius-3xl: 3rem;
-  
+
   --shadow-expressive: 0 8px 32px rgba(40, 90, 113, 0.15);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  --shadow-elevation-1: 0 1px 3px 1px rgba(0,0,0,0.12), 0 1px 2px 0 rgba(0,0,0,0.24);
+  --shadow-elevation-3: 0 4px 8px 3px rgba(0,0,0,0.10), 0 1px 3px 0 rgba(0,0,0,0.20);
+  --shadow-elevation-4: 0 6px 10px 4px rgba(0,0,0,0.10), 0 2px 3px 0 rgba(0,0,0,0.20);
 }
 
 @layer base {
   body {
     @apply bg-background-app text-primary min-h-screen font-sans;
   }
+}
+
+/* M3E transition helpers — use CSS var so they survive Tailwind purge */
+.md-elevation-transition {
+  transition: box-shadow 300ms var(--ease-standard), transform 300ms var(--ease-standard);
+}
+.md-morph-transition {
+  transition: all 300ms var(--ease-emphasized);
 }
 
 /* Markdown rendering inside chat bubbles */
@@ -38,8 +66,9 @@
 .neo-popup .maplibregl-popup-content {
   border-radius: 1.25rem;
   padding: 14px 16px;
-  box-shadow: 0 1px 2px 0 rgba(0,0,0,0.30), 0 2px 6px 2px rgba(0,0,0,0.15);
-  border: none;
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-elevation-3);
+  border: 1px solid var(--color-outline-variant);
   font-family: 'DM Sans', system-ui, sans-serif;
 }
 .neo-popup .maplibregl-popup-close-button {
@@ -59,5 +88,5 @@
   color: #1c1b1d;
 }
 .neo-popup .maplibregl-popup-tip {
-  border-top-color: #ffffff;
+  border-top-color: var(--color-surface);
 }

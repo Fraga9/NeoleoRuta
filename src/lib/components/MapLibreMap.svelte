@@ -714,10 +714,12 @@
     card.dataset.active = active ? '1' : '0';
     if (active) {
       card.style.transform = 'scale(1.2)';
-      card.style.boxShadow = `0 4px 20px rgba(0,0,0,0.28),0 0 0 2.5px ${color}`;
+      card.style.backgroundColor = 'var(--color-primary-container)';
+      card.style.boxShadow = `var(--shadow-elevation-4), 0 0 0 2.5px ${color}`;
     } else {
       card.style.transform = 'scale(1)';
-      card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.07)';
+      card.style.backgroundColor = 'var(--color-surface)';
+      card.style.boxShadow = 'var(--shadow-elevation-1)';
     }
   }
 
@@ -739,15 +741,16 @@
     const card = document.createElement('div');
     card.style.cssText = `
       width:${size}px;height:${size}px;
-      background:white;
+      background:var(--color-surface);
       border-radius:${isPrimary ? 12 : 9}px;
-      box-shadow:0 2px 8px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.07);
+      box-shadow:var(--shadow-elevation-1);
+      border:1px solid var(--color-outline-variant);
       display:flex;align-items:center;justify-content:center;
-      transition:transform 0.18s ease,box-shadow 0.18s ease;
+      transition:transform 0.2s cubic-bezier(0.3,0,0,1),box-shadow 0.2s cubic-bezier(0.3,0,0,1),background-color 0.2s cubic-bezier(0.3,0,0,1);
     `;
     card.dataset.active = '0';
     card.innerHTML = `<svg width="${iconSz}" height="${iconSz}" viewBox="0 0 24 24" fill="none"
-      stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       ${iconPaths}
     </svg>`;
     wrapper.appendChild(card);
@@ -758,13 +761,13 @@
     label.style.cssText = `
       margin-top:3px;
       font-size:${isPrimary ? 11 : 10}px;font-weight:700;
-      color:#1c1b1d;
+      color:var(--color-on-surface);
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
       max-width:110px;
       line-height:1.2;
-      text-shadow:-1px -1px 0 white,1px -1px 0 white,-1px 1px 0 white,1px 1px 0 white,0 0 6px rgba(255,255,255,0.9);
+      text-shadow:-1px -1px 0 var(--color-surface),1px -1px 0 var(--color-surface),-1px 1px 0 var(--color-surface),1px 1px 0 var(--color-surface),0 0 6px rgba(255,255,255,0.9);
       font-family:'DM Sans',system-ui,sans-serif;
       pointer-events:none;
     `;
@@ -775,12 +778,12 @@
     wrapper.addEventListener('mouseenter', () => {
       if (card.dataset.active === '1') return;
       card.style.transform = 'scale(1.12)';
-      card.style.boxShadow = `0 4px 16px rgba(0,0,0,0.22),0 0 0 1.5px ${color}55`;
+      card.style.boxShadow = `var(--shadow-elevation-3), 0 0 0 1.5px ${color}55`;
     });
     wrapper.addEventListener('mouseleave', () => {
       if (card.dataset.active === '1') return;
       card.style.transform = 'scale(1)';
-      card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.18),0 0 0 0.5px rgba(0,0,0,0.07)';
+      card.style.boxShadow = 'var(--shadow-elevation-1)';
     });
 
     return wrapper;

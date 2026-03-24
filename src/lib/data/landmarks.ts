@@ -12,6 +12,8 @@ export interface Landmark {
   routeQueryName: string;
   /** Custom illustrative SVG path(s) — 24×24 viewBox, stroke-based. Falls back to CATEGORY_ICON if absent. */
   svg?: string;
+  /** Optional gallery image URLs shown in the modal. */
+  images?: string[];
 }
 
 export const CATEGORY_COLOR: Record<LandmarkCategory, string> = {
@@ -55,8 +57,12 @@ export const landmarks: Landmark[] = [
     description: 'Una de las plazas cívicas más grandes del mundo. Corazón histórico de Monterrey, rodeada de monumentos, museos y el icónico Faro del Comercio.',
     activities: ['Faro del Comercio (mirador nocturno)', 'Fuente de Neptuno', 'Museo de Historia Mexicana', 'Palacio de Gobierno', 'Catedral Metropolitana'],
     routeQueryName: 'Macroplaza',
-    // Faro del Comercio — obelisco rectangular con cortes horizontales
     svg: '<rect x="10" y="2" width="4" height="20" rx="0.5"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="10" y1="13" x2="14" y2="13"/><line x1="7" y1="22" x2="17" y2="22"/>',
+    images: [
+      'https://dynamic-media-cdn.tripadvisor.com/media/photo-o/16/4b/ec/c2/img-20190129-100003-largejpg.jpg?w=900&h=500&s=1',
+      'https://visitmexico.com/media/usercontent/6886d1143a52d-Macroplaza-01-(1)-(1)_gmxdot_jpg',
+      'https://img.freepik.com/fotos-premium/mexico-monterrey-landmark-macroplaza-gran-plaza-plaza-centro-historico-ciudad_451699-3716.jpg',
+    ],
   },
   {
     id: 'estadio-bbva',
@@ -275,7 +281,7 @@ export const landmarks: Landmark[] = [
     tier: 'secondary',
     coordinates: [-100.3125685, 25.7259071],
     description: 'Campus principal de la Universidad Autónoma de Nuevo León (UANL). Centro académico, cultural y deportivo con arquitectura moderna y amplios espacios verdes.',
-    activities:  ['Paseos por el campus', 'Caminata y ciclovía peatonal', 'Restaurantes y terrazas', 'Esculturas y arte público', 'Fotografía del paisaje urbano'],
+    activities: ['Paseos por el campus', 'Caminata y ciclovía peatonal', 'Restaurantes y terrazas', 'Esculturas y arte público', 'Fotografía del paisaje urbano'],
     routeQueryName: 'Ciudad Universitaria',
     // "U" con serifs — letra universitaria clásica
     svg: '<path d="M7 4v12a5 5 0 0010 0V4"/><line x1="4" y1="4" x2="10" y2="4"/><line x1="14" y1="4" x2="20" y2="4"/>',

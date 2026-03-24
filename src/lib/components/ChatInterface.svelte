@@ -433,15 +433,15 @@
 -->
 <div
   bind:this={cardEl}
-  class="sheet-card fixed left-0 right-0 z-20 mx-auto flex flex-col overflow-hidden bg-white/97 backdrop-blur-2xl"
+  class="sheet-card fixed left-0 right-0 z-20 mx-auto flex flex-col overflow-hidden bg-surface-container-highest/97 backdrop-blur-2xl"
   style:visibility={hidden ? 'hidden' : 'visible'}
   style:pointer-events={hidden ? 'none' : 'auto'}
   style:bottom={targetMode === 'full' ? '0' : BOTTOM_GAP + 'px'}
   style:width={targetMode === 'full' ? '100%' : 'min(calc(100vw - 24px), 32rem)'}
-  style:border-radius={targetMode === 'full' ? '1.25rem 1.25rem 0 0' : '1.75rem'}
+  style:border-radius={targetMode === 'full' ? '1.75rem 1.75rem 0 0' : '1.75rem'}
   style:box-shadow={targetMode !== 'full'
-    ? '0 -2px 24px rgba(0,0,0,0.09), 0 0 0 0.5px rgba(0,0,0,0.04)'
-    : '0 -1px 4px rgba(0,0,0,0.06)'}
+    ? 'var(--shadow-elevation-3)'
+    : 'var(--shadow-elevation-1)'}
 >
   <!-- ── Drag Header ── -->
   <div
@@ -457,26 +457,26 @@
   >
     <!-- Handle pill -->
     <div class="flex justify-center pt-2.5 pb-1">
-      <div class="h-[5px] w-9 rounded-full bg-black/[0.18]"></div>
+      <div class="h-[5px] w-9 rounded-full bg-on-primary-container/25"></div>
     </div>
 
     <!-- Brand + Status row -->
     <div class="flex items-center justify-between px-5 pb-2.5 pt-0.5">
       <div class="flex items-center gap-2.5 min-w-0">
-        <div class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <svg class="h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <div class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-2xl bg-primary">
+          <svg class="h-4 w-4 text-on-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
           </svg>
         </div>
         <div class="min-w-0">
-          <p class="text-[15px] font-bold leading-tight text-primary">Neoleo Ruta</p>
+          <p class="text-[15px] font-bold leading-tight text-on-surface">Neoleo Ruta</p>
           {#if allMessages.length > 0 && sheetMode === 'compact'}
-            <p class="max-w-[190px] truncate text-[12px] leading-tight text-primary/50">
+            <p class="max-w-[190px] truncate text-[12px] leading-tight text-on-surface/50">
               {isRouteLoading || isStreaming ? 'Calculando ruta...' : lastAssistantPreview}
             </p>
           {:else if sheetMode === 'compact'}
-            <p class="text-[12px] leading-tight text-primary/40">Monterrey · Transporte público</p>
+            <p class="text-[12px] leading-tight text-on-surface/40">Monterrey · Transporte público</p>
           {/if}
         </div>
       </div>
@@ -484,9 +484,9 @@
       {#if allMessages.length > 0 && sheetMode === 'compact'}
         <button
           onclick={() => springTo(halfH)}
-          class="flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-secondary/30 active:bg-secondary/50 transition-colors"
+          class="flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-primary-container active:bg-primary/20 transition-colors"
         >
-          <span class="text-[12px] font-semibold text-primary/70">{allMessages.length} msg</span>
+          <span class="text-[12px] font-semibold text-on-primary-container">{allMessages.length} msg</span>
         </button>
       {/if}
     </div>
@@ -497,7 +497,7 @@
     <form onsubmit={handleSubmit}>
       <div
         class="relative flex items-center rounded-xl transition-all duration-200"
-        style="background: rgba(40,90,113,0.07); {isInputFocused ? 'outline: 2px solid rgba(40,90,113,0.2); background: white;' : ''}"
+        style="background: {isInputFocused ? 'var(--color-surface)' : 'rgba(40,90,113,0.07)'}; {isInputFocused ? 'outline: 2px solid var(--color-primary-container); box-shadow: var(--shadow-elevation-1);' : ''}"
       >
         <svg class="pointer-events-none absolute left-3.5 h-[18px] w-[18px] text-primary/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -513,13 +513,13 @@
           }}
           onblur={() => { isInputFocused = false; }}
           placeholder="Buscar ruta o destino"
-          class="w-full bg-transparent py-[11px] pl-10 pr-12 text-[16px] text-[#1c1b1d] placeholder-primary/30 focus:outline-none"
+          class="w-full bg-transparent py-[11px] pl-10 pr-12 text-[16px] text-on-surface placeholder-on-surface/30 focus:outline-none"
         />
         {#if input.trim()}
           <button
             type="submit"
             disabled={isStreaming || isRouteLoading}
-            class="absolute right-2 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white transition-all duration-150 active:scale-90 disabled:opacity-40"
+            class="absolute right-2 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary transition-all duration-150 active:scale-90 disabled:opacity-40"
           >
             {#if isStreaming || isRouteLoading}
               <span class="flex gap-0.5">
@@ -547,21 +547,21 @@
   >
     {#if allMessages.length === 0}
       <div class="pt-2 px-1">
-        <p class="mb-3 px-1 text-[12px] font-semibold uppercase tracking-wider text-primary/40">Sugerencias</p>
+        <p class="mb-3 px-1 text-[12px] font-semibold uppercase tracking-wider text-on-surface/40">Sugerencias</p>
         <div class="flex flex-col">
           {#each suggestions as s, i}
             <button
               onclick={() => submitSuggestion(s.text)}
               class="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors active:bg-black/[0.04]"
             >
-              <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/[0.07]">
-                <svg class="h-[17px] w-[17px] text-primary/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-container">
+                <svg class="h-[17px] w-[17px] text-on-primary-container" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
                 </svg>
               </div>
-              <span class="flex-1 text-[15px] text-[#1c1b1d]">{s.label}</span>
-              <svg class="h-4 w-4 flex-shrink-0 text-[#C7C7CC]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span class="flex-1 text-[15px] text-on-surface">{s.label}</span>
+              <svg class="h-4 w-4 flex-shrink-0 text-outline-variant" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
               </svg>
             </button>
@@ -576,14 +576,14 @@
         {#each allMessages as message (message.id)}
           <div class="flex flex-col {message.role === 'user' ? 'items-end' : 'items-start'}">
             {#if message.role === 'user'}
-              <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-primary text-white rounded-[1.25rem] rounded-tr-md shadow-sm">
+              <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-primary text-on-primary rounded-[1.25rem] rounded-tr-md shadow-elevation-1">
                 {message.text}
               </div>
             {:else if 'plan' in message && message.plan}
               <!-- Route response: short greeting + visual step card -->
               <div class="w-full max-w-[92%] flex flex-col gap-2">
                 {#if message.text && message.text !== '...'}
-                  <div class="px-4 py-2.5 text-[15px] leading-relaxed bg-[#F2F2F7] text-[#1c1b1d] rounded-[1.25rem] rounded-tl-md prose prose-sm">
+                  <div class="px-4 py-2.5 text-[15px] leading-relaxed bg-surface-container-high text-on-surface rounded-[1.25rem] rounded-tl-md prose prose-sm">
                     {@html marked.parse(message.text)}
                   </div>
                 {/if}
@@ -604,7 +604,7 @@
                 {/if}
               </div>
             {:else}
-              <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-[#F2F2F7] text-[#1c1b1d] rounded-[1.25rem] rounded-tl-md prose prose-sm">
+              <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-surface-container-high text-on-surface rounded-[1.25rem] rounded-tl-md prose prose-sm">
                 {@html marked.parse(message.text)}
                 {#if 'candidates' in message && message.candidates}
                   <div class="mt-3 flex flex-col gap-1.5">
@@ -614,8 +614,8 @@
                         disabled={!pendingClarification}
                         class="rounded-xl px-3.5 py-2.5 text-left text-[14px] transition-all
                                {pendingClarification
-                                 ? 'border border-[#E5E5EA] bg-white shadow-sm hover:border-primary/40 active:scale-[0.98]'
-                                 : 'border border-transparent bg-[#F2F2F7] text-[#8E8E93]'}"
+                                 ? 'border border-outline-variant bg-surface shadow-elevation-1 hover:border-primary/40 active:scale-[0.98]'
+                                 : 'border border-transparent bg-surface-container-high text-on-surface/50'}"
                       >
                         {candidate.label}
                       </button>

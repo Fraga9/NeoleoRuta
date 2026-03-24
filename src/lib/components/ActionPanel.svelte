@@ -55,14 +55,14 @@
   <div 
     transition:fade={{ duration: 200 }}
     onclick={onClose}
-    class="fixed inset-0 z-[60] bg-black/20 backdrop-blur-[2px]"
+    class="fixed inset-0 z-[60] bg-on-surface/25 backdrop-blur-[3px]"
   ></div>
 
   <!-- Bottom Sheet -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     transition:fly={{ y: 800, duration: 450, easing: cubicOut }}
-    class="fixed inset-x-0 bottom-0 z-[70] flex flex-col rounded-t-[3rem] bg-white/95 shadow-2xl ring-1 ring-black/5 backdrop-blur-2xl transition-transform"
+    class="fixed inset-x-0 bottom-0 z-[70] flex flex-col rounded-t-[3rem] bg-surface-container-highest shadow-elevation-4 ring-1 ring-outline-variant/20 backdrop-blur-2xl transition-transform"
     style="height: 85vh; transform: translateY({translateY}px); transition: {isDragging ? 'none' : 'transform 0.3s cubic-out'};"
     ontouchstart={onTouchStart}
     ontouchmove={onTouchMove}
@@ -70,7 +70,7 @@
   >
     <!-- Handle -->
     <div class="flex w-full cursor-grab justify-center p-6 active:cursor-grabbing">
-      <div class="h-1.5 w-16 rounded-full bg-gray-300/60"></div>
+      <div class="h-1.5 w-16 rounded-full bg-on-surface/20"></div>
     </div>
 
     <!-- Header con Navegación -->
@@ -79,7 +79,7 @@
         {#if onBack}
           <button 
             onclick={onBack}
-            class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/5 text-primary hover:bg-primary/10 transition-all active:scale-90"
+            class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary transition-all active:scale-90"
           >
             <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" />
@@ -87,12 +87,12 @@
           </button>
         {/if}
         <div class="flex-1">
-          <h2 class="text-2xl font-bold text-primary">{title}</h2>
-          <p class="text-sm font-semibold text-gray-400">{subtitle}</p>
+          <h2 class="text-2xl font-bold text-on-surface">{title}</h2>
+          <p class="text-sm font-semibold text-on-surface/40">{subtitle}</p>
         </div>
         <button 
           onclick={onClose}
-          class="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-all active:scale-90"
+          class="flex h-11 w-11 items-center justify-center rounded-full bg-surface-container-high text-on-surface/60 hover:bg-outline-variant transition-all active:scale-90"
         >
           <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" />
@@ -108,7 +108,7 @@
           {#each items as item}
             <button 
               onclick={() => item.action?.()}
-              class="group flex w-full items-center gap-4 rounded-[2rem] border border-black/5 bg-white p-4 shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
+              class="group flex w-full items-center gap-4 rounded-[2rem] border border-outline-variant/20 bg-surface p-4 shadow-elevation-1 md-morph-transition hover:shadow-elevation-3 active:scale-[0.98]"
             >
               <div 
                 class="flex h-14 w-14 items-center justify-center rounded-full text-white shadow-inner transition-transform group-hover:scale-110"
@@ -121,23 +121,23 @@
               
               <div class="flex flex-1 flex-col text-left">
                 <div class="flex items-center justify-between">
-                  <span class="font-bold text-primary">{item.title}</span>
+                  <span class="font-bold text-on-surface">{item.title}</span>
                   {#if item.extraInfo}
-                    <span class="text-[10px] font-bold text-primary/40 uppercase tracking-widest">{item.extraInfo}</span>
+                    <span class="text-[10px] font-bold text-on-surface/40 uppercase tracking-widest">{item.extraInfo}</span>
                   {/if}
                 </div>
-                <span class="text-xs font-semibold text-gray-500">{item.description}</span>
+                <span class="text-xs font-semibold text-on-surface/50">{item.description}</span>
                 
                 {#if item.badge}
                   <div class="mt-2">
-                    <span class="rounded-full bg-secondary/20 px-2 py-0.5 text-[10px] font-bold text-primary/70 uppercase">
+                    <span class="rounded-full bg-primary-container px-2 py-0.5 text-[10px] font-bold text-on-primary-container uppercase">
                       {item.badge}
                     </span>
                   </div>
                 {/if}
               </div>
 
-              <div class="text-gray-200 group-hover:text-primary transition-colors">
+              <div class="text-outline-variant group-hover:text-primary transition-colors">
                 <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
                 </svg>
@@ -145,14 +145,14 @@
               </button>
               {/each}
               </div>      {:else}
-        <div class="mt-12 flex flex-col items-center justify-center text-center px-10 text-gray-400">
+        <div class="mt-12 flex flex-col items-center justify-center text-center px-10 text-on-surface/30">
           <p>No hay información disponible por el momento.</p>
         </div>
       {/if}
 
       {#if footerText}
-        <div class="mt-10 rounded-3xl bg-primary/[0.03] p-6 border border-primary/5">
-          <p class="text-[11px] font-bold text-primary/40 italic uppercase tracking-wider text-center">
+        <div class="mt-10 rounded-3xl bg-primary-container/20 p-6 border border-primary-container/40">
+          <p class="text-[11px] font-bold text-on-primary-container/50 italic uppercase tracking-wider text-center">
             {footerText}
           </p>
         </div>
