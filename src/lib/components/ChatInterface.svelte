@@ -33,17 +33,39 @@
   let isInputFocused = $state(false);
 
   // ── Height-based snap points (px) ──
-  // Card is anchored at bottom:12px and grows UPWARD.
+  // Card is anchored at bottom:BOTTOM_GAP+kbOffset and grows UPWARD.
   // This way rounded bottom corners are always visible — true floating.
   const COMPACT_H = 140;
   let halfH = $state(370);
   let fullH = $state(620);
-  const BOTTOM_GAP = 12; // always 12px from screen bottom
+  const BOTTOM_GAP = 12; // always 12px from the visible viewport bottom
+
+  // Keyboard offset: how many px the visible viewport bottom is above window bottom.
+  // On iOS Safari, innerHeight stays fixed; visualViewport.height shrinks with keyboard.
+  // On Android/Chrome both shrink, but visualViewport is still the right source.
+  let kbOffset = $state(0);
+
+  function getVpHeight(): number {
+    return window.visualViewport?.height ?? window.innerHeight;
+  }
 
   function calcSnap() {
     if (!browser) return;
-    halfH = Math.min(380, Math.round(window.innerHeight * 0.48));
-    fullH = Math.round(window.innerHeight * 0.82);
+    const h = getVpHeight();
+    halfH = Math.min(380, Math.round(h * 0.48));
+    fullH = Math.round(h * 0.82);
+  }
+
+  function onVpResize() {
+    if (!browser) return;
+    const vp = window.visualViewport;
+    if (vp) {
+      // kbOffset = space between visible viewport bottom and window bottom
+      kbOffset = Math.max(0, window.innerHeight - vp.height - vp.offsetTop);
+    }
+    calcSnap();
+    // If input is focused and keyboard just opened, ensure at least half mode
+    if (kbOffset > 80 && sheetMode === 'compact') springTo(halfH);
   }
 
   // ── Card height (direct DOM, not $state, for 60fps spring) ──
@@ -61,13 +83,25 @@
     calcSnap();
     applyH(COMPACT_H);
     targetMode = 'compact';
-    window.addEventListener('resize', calcSnap);
+    // visualViewport covers both keyboard resize and URL bar changes.
+    // Falls back to window resize for browsers without visualViewport support.
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', onVpResize);
+      window.visualViewport.addEventListener('scroll', onVpResize);
+    } else {
+      window.addEventListener('resize', calcSnap);
+    }
   });
 
   onDestroy(() => {
     if (springRAF !== null) cancelAnimationFrame(springRAF);
     if (browser) {
-      window.removeEventListener('resize', calcSnap);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', onVpResize);
+        window.visualViewport.removeEventListener('scroll', onVpResize);
+      } else {
+        window.removeEventListener('resize', calcSnap);
+      }
       stopDrag();
     }
   });
@@ -436,7 +470,7 @@
   class="sheet-card fixed left-0 right-0 z-20 mx-auto flex flex-col overflow-hidden bg-surface-container-highest/97 backdrop-blur-2xl"
   style:visibility={hidden ? 'hidden' : 'visible'}
   style:pointer-events={hidden ? 'none' : 'auto'}
-  style:bottom={targetMode === 'full' ? '0' : BOTTOM_GAP + 'px'}
+  style:bottom={targetMode === 'full' ? kbOffset + 'px' : kbOffset + BOTTOM_GAP + 'px'}
   style:width={targetMode === 'full' ? '100%' : 'min(calc(100vw - 24px), 32rem)'}
   style:border-radius={targetMode === 'full' ? '1.75rem 1.75rem 0 0' : '1.75rem'}
   style:box-shadow={targetMode !== 'full'

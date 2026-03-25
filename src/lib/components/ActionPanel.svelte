@@ -63,7 +63,7 @@
   <div
     transition:fly={{ y: 800, duration: 450, easing: cubicOut }}
     class="fixed inset-x-0 bottom-0 z-[70] flex flex-col rounded-t-[3rem] bg-surface-container-highest shadow-elevation-4 ring-1 ring-outline-variant/20 backdrop-blur-2xl transition-transform"
-    style="height: 85vh; transform: translateY({translateY}px); transition: {isDragging ? 'none' : 'transform 0.3s cubic-out'};"
+    style="height: 85dvh; transform: translateY({translateY}px); transition: {isDragging ? 'none' : 'transform 0.3s cubic-out'};"
     ontouchstart={onTouchStart}
     ontouchmove={onTouchMove}
     ontouchend={onTouchEnd}

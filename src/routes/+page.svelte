@@ -282,7 +282,7 @@
   <title>Neoleo Ruta - Monterrey</title>
 </svelte:head>
 
-<main class="relative h-screen w-screen overflow-hidden bg-background-app">
+<main class="relative h-[100dvh] w-screen overflow-hidden bg-background-app">
   <MapLibreMap />
   <HamburgerMenu onAction={handleMenuAction} />
 

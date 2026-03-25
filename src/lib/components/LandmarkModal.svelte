@@ -235,7 +235,7 @@
       </div>
 
       <!-- ── Contenido scrollable ── -->
-      <div class="overflow-y-auto pb-10 no-scrollbar" style="max-height: 52vh;">
+      <div class="overflow-y-auto pb-10 no-scrollbar" style="max-height: 52dvh;">
 
         <!-- Sección: Acerca de -->
         <div class="mb-4">

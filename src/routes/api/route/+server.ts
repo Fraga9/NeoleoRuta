@@ -29,6 +29,21 @@ function norm(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+// ── Language detection — conservative, only fires on unambiguous English signals ──
+// Spanish queries with English words ("llévame al downtown") must NOT trigger this.
+function detectLang(message: string): 'en' | 'es' {
+  const m = message.toLowerCase();
+  const enPhrases = [
+    'how do i', 'how can i', 'how to get', 'how do you',
+    'take me to', 'get me to', 'directions to', 'route to',
+    'i want to go', 'i need to go', 'i\'m going to',
+    'from the ', 'from downtown', 'from airport',
+    'to the airport', 'to the stadium', 'to downtown',
+    'get to ', 'going to ', 'way to ',
+  ];
+  return enPhrases.some(p => m.includes(p)) ? 'en' : 'es';
+}
+
 // ── Fast NLU: regex patterns for common route queries ──
 // All patterns work on accent-normalized input.
 // Pre-compiled regexes for performance (no template literal escaping issues).
@@ -268,8 +283,13 @@ Mensaje: "${message}"`,
           const hasTransportLeg = plan.steps.some((s: any) =>
             s.type === 'walk' && haversineDistance(s.fromCoords, s.toCoords) > 1500
           );
+
+          const lang = detectLang(message ?? '');
+
           const transportTip = hasTransportLeg
-            ? '\nNOTA: Los tramos marcados con 🚕 son demasiado largos para caminar. Recomienda taxi, Uber o Didi para esas partes.'
+            ? lang === 'en'
+              ? '\nNOTE: Segments marked with 🚕 are too far to walk. Recommend a taxi, Uber, or Didi for those parts.'
+              : '\nNOTA: Los tramos marcados con 🚕 son demasiado largos para caminar. Recomienda taxi, Uber o Didi para esas partes.'
             : '';
 
           const altSummary = alternatives.map((alt: any, i: number) => {
@@ -277,19 +297,23 @@ Mensaje: "${message}"`,
             const lineName = firstTransit?.routeId
               ? (transitRoutes[firstTransit.routeId]?.label ?? firstTransit.routeId)
               : '?';
-            return `- Opción ${i + 2}: ${lineName} (~${alt.totalDuration} min)`;
+            return lang === 'en'
+              ? `- Option ${i + 2}: ${lineName} (~${alt.totalDuration} min)`
+              : `- Opción ${i + 2}: ${lineName} (~${alt.totalDuration} min)`;
           }).join('\n');
 
           const JERGA = `JERGA REGIOMONTANA — úsala de forma NATURAL (1-2 frases por respuesta, sin encadenar):
 "De volon pin pon"=Rápido/al tiro | "En corto"=Rápido | "Simón"=sí/claro | "La neta"=la verdad | "Órale pues"=ándale | "¡Échale!"=vamos | "Pos"=pues | "Nomás"=solo | "Está cañón"=está difícil | "Pilas"=listo/alerta | "La raza"=la gente | "¡Ya estás!"=ya quedó | "Gacho"=malo/inconveniente | "Chido/a"=cool | "No te arrugues"=échale ganas | "¡Hay te wacho!"=hasta luego`;
 
-          const nlgResult = streamText({
-            model: google('gemini-2.5-flash'),
-            maxOutputTokens: 150,
-            providerOptions: {
-              google: { thinkingConfig: { thinkingBudget: 0 } },
-            },
-            prompt: `Eres "Neoleo Ruta Inteligente", asistente de transporte en Monterrey, NL.
+          const nlgPrompt = lang === 'en'
+            ? `You are "Neoleo Ruta", a friendly transit assistant for Monterrey, NL, Mexico.
+The user wants to go from "${plan.origin.name}" to "${plan.destination.name}".
+The trip will take ~${plan.totalDuration} minutes total.${transportTip}
+${altSummary ? `\nAlternatives available:\n${altSummary}` : ''}
+
+Write ONE brief, warm greeting (max 2 sentences). Mention the total travel time and alternatives if any.
+Keep it helpful and local. Do NOT describe the steps (they are shown as visual cards below).`
+            : `Eres "Neoleo Ruta Inteligente", asistente de transporte en Monterrey, NL.
 ${JERGA}
 
 El usuario quiere ir de "${plan.origin.name}" a "${plan.destination.name}".
@@ -297,7 +321,15 @@ La ruta tardará ~${plan.totalDuration} minutos en total.${transportTip}
 ${altSummary ? `\nAlternativas: ${altSummary}` : ''}
 
 Escribe UN saludo muy breve y cálido (máximo 2 oraciones). Menciona el tiempo total y si hay alternativas.
-Usa 1 expresión regia natural. NO describas los pasos (ya se muestran como tarjetas visuales).`,
+Usa 1 expresión regia natural. NO describas los pasos (ya se muestran como tarjetas visuales).`;
+
+          const nlgResult = streamText({
+            model: google('gemini-2.5-flash'),
+            maxOutputTokens: 150,
+            providerOptions: {
+              google: { thinkingConfig: { thinkingBudget: 0 } },
+            },
+            prompt: nlgPrompt,
           });
 
           for await (const chunk of nlgResult.textStream) {

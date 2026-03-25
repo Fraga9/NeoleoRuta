@@ -2,6 +2,32 @@
 // so Gemini doesn't have to provide them (it fails with too many numeric params)
 
 export const knownPlaces: Record<string, [number, number]> = {
+  // ── English aliases ──
+  'airport':                    [-100.1070, 25.7786],
+  'mty airport':                [-100.1070, 25.7786],
+  'monterrey airport':          [-100.1070, 25.7786],
+  'monterrey international airport': [-100.1070, 25.7786],
+  'bbva stadium':               [-100.2443769, 25.6690987],
+  'rayados stadium':            [-100.2443769, 25.6690987],
+  'fundidora park':             [-100.2834486, 25.6789357],
+  'downtown monterrey':         [-100.3161, 25.6866],
+  'monterrey downtown':         [-100.3161, 25.6866],
+  'monterrey cathedral':        [-100.3096008, 25.6655169],
+  'bus terminal':               [-100.3244, 25.6869],
+  'north bus terminal':         [-100.3244, 25.6869],
+  'steel museum':               [-100.2828302, 25.6762887],
+  'alfa planetarium':           [-100.3680, 25.6549],
+  'alfa planetario':            [-100.3680, 25.6549],
+  'tec de monterrey campus':    [-100.2900, 25.6510],
+  'itesm campus':               [-100.2900, 25.6510],
+  'university city':            [-100.3125685, 25.7259071],
+  'huasteca park':              [-100.4508431, 25.6494791],
+  'chipinque park':             [-100.3751, 25.6013],
+  'marco museum':               [-100.3098090, 25.6645411],
+  'government palace':          [-100.3092772, 25.6724347],
+  'santa lucia walk':           [-100.3073008, 25.6715432],
+  'santa lucia river walk':     [-100.3073008, 25.6715432],
+
   // ── Landmarks ──
   'macroplaza':             [-100.3099346, 25.6691153],
   'estadio bbva':           [-100.2443769, 25.6690987],

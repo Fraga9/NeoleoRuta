@@ -713,13 +713,11 @@
     const color = CATEGORY_COLOR[landmarks[idx].category];
     card.dataset.active = active ? '1' : '0';
     if (active) {
-      card.style.transform = 'scale(1.2)';
-      card.style.backgroundColor = 'var(--color-primary-container)';
-      card.style.boxShadow = `var(--shadow-elevation-4), 0 0 0 2.5px ${color}`;
+      card.style.transform = 'scale(1.25)';
+      card.style.boxShadow = `0 0 0 3px #fff,0 0 0 5.5px ${color},var(--shadow-elevation-4)`;
     } else {
       card.style.transform = 'scale(1)';
-      card.style.backgroundColor = 'var(--color-surface)';
-      card.style.boxShadow = 'var(--shadow-elevation-1)';
+      card.style.boxShadow = '0 0 0 2.5px #fff,var(--shadow-elevation-1)';
     }
   }
 
@@ -741,16 +739,15 @@
     const card = document.createElement('div');
     card.style.cssText = `
       width:${size}px;height:${size}px;
-      background:var(--color-surface);
-      border-radius:${isPrimary ? 12 : 9}px;
-      box-shadow:var(--shadow-elevation-1);
-      border:1px solid var(--color-outline-variant);
+      background:${color};
+      border-radius:50%;
+      box-shadow:0 0 0 2.5px #fff,var(--shadow-elevation-1);
       display:flex;align-items:center;justify-content:center;
-      transition:transform 0.2s cubic-bezier(0.3,0,0,1),box-shadow 0.2s cubic-bezier(0.3,0,0,1),background-color 0.2s cubic-bezier(0.3,0,0,1);
+      transition:transform 0.2s cubic-bezier(0.3,0,0,1),box-shadow 0.2s cubic-bezier(0.3,0,0,1);
     `;
     card.dataset.active = '0';
     card.innerHTML = `<svg width="${iconSz}" height="${iconSz}" viewBox="0 0 24 24" fill="none"
-      stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       ${iconPaths}
     </svg>`;
     wrapper.appendChild(card);
@@ -778,12 +775,12 @@
     wrapper.addEventListener('mouseenter', () => {
       if (card.dataset.active === '1') return;
       card.style.transform = 'scale(1.12)';
-      card.style.boxShadow = `var(--shadow-elevation-3), 0 0 0 1.5px ${color}55`;
+      card.style.boxShadow = `0 0 0 2.5px #fff,0 0 0 5px ${color}55,var(--shadow-elevation-3)`;
     });
     wrapper.addEventListener('mouseleave', () => {
       if (card.dataset.active === '1') return;
       card.style.transform = 'scale(1)';
-      card.style.boxShadow = 'var(--shadow-elevation-1)';
+      card.style.boxShadow = '0 0 0 2.5px #fff,var(--shadow-elevation-1)';
     });
 
     return wrapper;

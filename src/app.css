@@ -37,7 +37,7 @@
 
 @layer base {
   body {
-    @apply bg-background-app text-primary min-h-screen font-sans;
+    @apply bg-background-app text-primary min-h-[100dvh] font-sans;
   }
 }
 
