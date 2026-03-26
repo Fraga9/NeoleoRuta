@@ -258,11 +258,16 @@ export function resolveCoordinates(name: string): [number, number] | null {
     if (normalizeAccents(placeName) === keyNorm) return coords;
   }
 
-  // Fuzzy match: check if the key is contained in any known place name
-  for (const [placeName, coords] of Object.entries(knownPlaces)) {
-    const placeNorm = normalizeAccents(placeName);
-    if (placeNorm.includes(keyNorm) || keyNorm.includes(placeNorm)) {
-      return coords;
+  // Fuzzy match: every significant word in query must exist as a complete word in place name
+  // Filter out stopwords (articles, prepositions) - words <= 2 chars
+  const keyWords = keyNorm.split(/\s+/).filter(w => w.length > 2);
+  if (keyWords.length > 0) {
+    for (const [placeName, coords] of Object.entries(knownPlaces)) {
+      const placeWords = normalizeAccents(placeName).split(/\s+/);
+      const allWordsMatch = keyWords.every(kw => placeWords.some(pw => pw === kw));
+      if (allWordsMatch) {
+        return coords;
+      }
     }
   }
   return null;

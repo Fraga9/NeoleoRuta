@@ -29,6 +29,14 @@ export type GeoResult =
 // ── Config ──
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
+
+// Ambiguous terms that should skip Tier 1 (local dictionary) and go directly to external geocoders
+// These are acronyms or chains with multiple locations that Nominatim handles better
+const REQUIRES_EXTERNAL_GEOCODING = new Set([
+  'sat', 'imss', 'issste', 'infonavit', 'cfe', 'telmex',
+  'oxxo', 'heb', '7eleven', '7-eleven', 'soriana', 'walmart',
+  'coppel', 'elektra', 'famsa', 'banco', 'banamex', 'bancomer', 'banorte',
+]);
 const PHOTON_BASE = 'https://photon.komoot.io/api';
 const MONTERREY_VIEWBOX = '-100.5,25.5,-100.1,25.9';
 const MTY_CENTER: [number, number] = [-100.31, 25.67];
@@ -39,26 +47,39 @@ const geocodeCache = new Map<string, { coords: [number, number]; label: string; 
 
 // ── Address detection ──
 
+export interface AddressDetection {
+  isAddress: boolean;
+  isColoniaOnly?: boolean;  // Colonia without street number (e.g., "colonia san francisco")
+}
+
 /**
  * Detect if an input looks like a street address rather than a place name.
  * Three signals (any one is sufficient):
- * A. Explicit colonia mention (col./colonia)
+ * A. Explicit colonia mention (col./colonia) - may be colonia-only (no number)
  * B. Street prefix + name + house number
  * C. Word(≥3 chars) + house number (broad catch)
  */
-export function detectAddress(input: string): boolean {
+export function detectAddress(input: string): AddressDetection {
   const s = input.toLowerCase().trim();
 
   // Signal A: "col. Independencia", "colonia del valle"
-  if (/\bcol(?:onia)?\.?\s+\w+/i.test(s)) return true;
+  if (/\bcol(?:onia)?\.?\s+\w+/i.test(s)) {
+    // Check if there's a house number anywhere in the string
+    const hasNumber = /\d{1,5}/.test(s);
+    return { isAddress: true, isColoniaOnly: !hasNumber };
+  }
 
   // Signal B: Street prefix + name + number
-  if (/(?:^|[\s,])(?:calle|av\.?|avenida|blvd\.?|boulevard|r[ií]o|priv\.?|privada|paseo|calz\.?|calzada|carr\.?|carretera|andador|cerrada|retorno)\s+[\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+)*\s+#?\d{1,5}\b/i.test(s)) return true;
+  if (/(?:^|[\s,])(?:calle|av\.?|avenida|blvd\.?|boulevard|r[ií]o|priv\.?|privada|paseo|calz\.?|calzada|carr\.?|carretera|andador|cerrada|retorno)\s+[\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+)*\s+#?\d{1,5}\b/i.test(s)) {
+    return { isAddress: true };
+  }
 
   // Signal C: word≥3 + house number (catches "Hidalgo 102", "Madero 500")
-  if (/(?:^|[\s,])[\w\u00C0-\u024F]{3,}(?:\s+[\w\u00C0-\u024F]+)*\s+#?\d{1,5}(?:\s*,|\s*$)/i.test(s)) return true;
+  if (/(?:^|[\s,])[\w\u00C0-\u024F]{3,}(?:\s+[\w\u00C0-\u024F]+)*\s+#?\d{1,5}(?:\s*,|\s*$)/i.test(s)) {
+    return { isAddress: true };
+  }
 
-  return false;
+  return { isAddress: false };
 }
 
 // ── Nominatim structured query ──
@@ -107,6 +128,43 @@ async function nominatimStructured(input: string): Promise<GeoCandidate[]> {
   } catch {
     return [];
   }
+}
+
+// ── Nominatim colonia (neighbourhood/settlement) ──
+
+async function nominatimColonia(input: string): Promise<GeoCandidate[]> {
+  // Strip "colonia"/"col." prefix so Nominatim gets just the neighbourhood name
+  const name = input.replace(/^\s*col(?:onia)?\.?\s+/i, '').trim();
+
+  // Two parallel queries: with and without "colonia" prefix, both as settlement
+  const queries = [name, `colonia ${name}`];
+  const allResults: GeoCandidate[] = [];
+
+  for (const q of queries) {
+    const params = new URLSearchParams({
+      q: `${q}, Monterrey, Nuevo León, Mexico`,
+      format: 'json',
+      limit: '5',
+      viewbox: MONTERREY_VIEWBOX,
+      bounded: '1',
+      featuretype: 'settlement',  // Only return suburbs/neighbourhoods, not streets
+    });
+
+    try {
+      const res = await fetch(`${NOMINATIM_BASE}?${params}`, {
+        headers: { 'User-Agent': 'NeoleoRuta/1.0 (transit-app)' },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      allResults.push(...data.map((r: any) => ({
+        label: r.display_name?.split(',').slice(0, 3).join(',').trim() || r.display_name,
+        coords: [parseFloat(r.lon), parseFloat(r.lat)] as [number, number],
+      })));
+    } catch { /* ignore */ }
+  }
+
+  return allResults;
 }
 
 // ── Nominatim free-text ──
@@ -283,30 +341,44 @@ function processCandidates(candidates: GeoCandidate[], tier: string, sortByRef?:
 export async function geocodeMulti(placeName: string, userLocation?: [number, number]): Promise<GeoResult> {
   const key = placeName.toLowerCase().trim();
 
-  // Tier 1: Local dictionary (knownPlaces)
-  const local = resolveCoordinates(placeName);
-  if (local) {
-    console.log(`[GEOCODING] Tier 1 (local): "${placeName}" → [${local}]`);
-    return { status: 'resolved', coords: local, label: placeName, tier: 'local' };
-  }
+  // Skip Tier 1 for ambiguous terms (chains, government offices with multiple locations)
+  const skipLocalLookup = REQUIRES_EXTERNAL_GEOCODING.has(key);
+  
+  if (!skipLocalLookup) {
+    // Tier 1: Local dictionary (knownPlaces)
+    const local = resolveCoordinates(placeName);
+    if (local) {
+      console.log(`[GEOCODING] Tier 1 (local): "${placeName}" → [${local}]`);
+      return { status: 'resolved', coords: local, label: placeName, tier: 'local' };
+    }
 
-  // Tier 2: Cache (resolved results only)
-  const cached = geocodeCache.get(key);
-  if (cached) {
-    console.log(`[GEOCODING] Tier 2 (cache): "${placeName}" → [${cached.coords}]`);
-    return { status: 'resolved', ...cached };
+    // Tier 2: Cache (resolved results only)
+    const cached = geocodeCache.get(key);
+    if (cached) {
+      console.log(`[GEOCODING] Tier 2 (cache): "${placeName}" → [${cached.coords}]`);
+      return { status: 'resolved', ...cached };
+    }
+  } else {
+    console.log(`[GEOCODING] Skipping Tier 1 for ambiguous term: "${placeName}"`);
   }
 
   // Tiers 3+4+5: Collect candidates from all external geocoders, then process once.
   // This ensures a structured match (Tier 3) doesn't short-circuit before
   // free-text/Photon can find the same street in other municipalities.
-  const isAddress = detectAddress(placeName);
+  const addressInfo = detectAddress(placeName);
 
   const geocodePromises: Promise<GeoCandidate[]>[] = [];
 
-  if (isAddress) {
+  // Only use structured query for addresses with street numbers, not colonia-only queries
+  // Colonia-only (e.g., "colonia san francisco") doesn't have a number, so structured query
+  // sends street="colonia san francisco" which fails - let free-text handle it
+  if (addressInfo.isAddress && !addressInfo.isColoniaOnly) {
     console.log(`[GEOCODING] Tier 3 (structured): detected address "${placeName}"`);
     geocodePromises.push(nominatimStructured(placeName));
+  } else if (addressInfo.isColoniaOnly) {
+    // Use settlement-scoped query to get the neighbourhood centroid, not streets
+    console.log(`[GEOCODING] Colonia-only query: "${placeName}" → settlement search`);
+    geocodePromises.push(nominatimColonia(placeName));
   }
 
   console.log(`[GEOCODING] Tier 4+5 (nominatim + photon): "${placeName}"`);
@@ -317,7 +389,10 @@ export async function geocodeMulti(placeName: string, userLocation?: [number, nu
   const allCandidates = allResults.flat();
 
   const sortRef = userLocation || MTY_CENTER;
-  const mergedResult = processCandidates(allCandidates, isAddress ? 'structured+nominatim+photon' : 'nominatim+photon', sortRef);
+  const tierLabel = addressInfo.isColoniaOnly ? 'nominatim+photon (colonia)' 
+                  : addressInfo.isAddress ? 'structured+nominatim+photon' 
+                  : 'nominatim+photon';
+  const mergedResult = processCandidates(allCandidates, tierLabel, sortRef);
   if (mergedResult) {
     if (mergedResult.status === 'resolved') geocodeCache.set(key, mergedResult);
     return mergedResult;

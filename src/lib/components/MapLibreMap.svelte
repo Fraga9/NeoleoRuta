@@ -23,6 +23,9 @@
   let markers: maplibregl.Marker[] = [];
   // POI landmark markers — separate array so cleanupLayers() never touches them
   let poiMarkers: maplibregl.Marker[] = [];
+  // Area layer IDs — permanent, cleaned up only on destroy
+  const areaSourceIds: string[] = [];
+  const areaLayerIds: string[] = [];
 
   // Animation frame IDs for cleanup
   let animationFrameIds: number[] = [];
@@ -683,6 +686,8 @@
       }
       pulseAnimationId = requestAnimationFrame(animatePulse);
 
+      // ── POI landmark area fills (rendered below markers) ──
+      initLandmarkAreas();
       // ── POI landmark markers (permanent — not cleaned up by clearRoutes) ──
       initLandmarkMarkers();
 
@@ -803,6 +808,65 @@
     });
   }
 
+  function initLandmarkAreas() {
+    landmarks.forEach(lm => {
+      if (!lm.area || lm.area.length < 3) return;
+      const color = CATEGORY_COLOR[lm.category];
+      // Close the ring if needed
+      const ring = [...lm.area];
+      const first = ring[0], last = ring[ring.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
+
+      const sourceId = `area-src-${lm.id}`;
+      const fillId   = `area-fill-${lm.id}`;
+      const lineId   = `area-line-${lm.id}`;
+
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [ring] },
+          properties: {},
+        },
+      });
+
+      map.addLayer({
+        id: fillId,
+        type: 'fill',
+        source: sourceId,
+        layout: { visibility: 'none' },   // hidden until landmark is activated
+        paint: {
+          'fill-color': color,
+          'fill-opacity': 0.13,
+        },
+      });
+
+      map.addLayer({
+        id: lineId,
+        type: 'line',
+        source: sourceId,
+        layout: {
+          visibility: 'none',             // hidden until landmark is activated
+          'line-join': 'round',           // round the polygon vertices
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': color,
+          'line-opacity': 0.5,
+          'line-width': 2,
+        },
+      });
+
+      // Clicking the fill area opens the same landmark modal (when visible)
+      map.on('click', fillId, () => landmarkStore.open(lm));
+      map.on('mouseenter', fillId, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', fillId, () => { map.getCanvas().style.cursor = ''; });
+
+      areaSourceIds.push(sourceId);
+      areaLayerIds.push(fillId, lineId);
+    });
+  }
+
   function initLandmarkMarkers() {
     landmarks.forEach(lm => {
       const el = createLandmarkMarkerEl(lm);
@@ -832,19 +896,31 @@
   const unsubLandmarkActive = landmarkStore.subscribe(s => {
     if (!mapLoaded) return;
 
-    // Deactivate previous marker
+    // Deactivate previous marker + hide its area
     if (activePoiIdx >= 0) {
       setMarkerActive(activePoiIdx, false);
+      const prevLm = landmarks[activePoiIdx];
+      if (prevLm?.area) {
+        const fid = `area-fill-${prevLm.id}`, lid = `area-line-${prevLm.id}`;
+        if (map.getLayer(fid)) map.setLayoutProperty(fid, 'visibility', 'none');
+        if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', 'none');
+      }
       activePoiIdx = -1;
     }
 
     if (!s.activeLandmark) return;
 
-    // Find and activate the matching marker
+    // Find and activate the matching marker + show its area
     const idx = landmarks.findIndex(l => l.id === s.activeLandmark!.id);
     if (idx < 0) return;
     activePoiIdx = idx;
     setMarkerActive(idx, true);
+    const lm = landmarks[idx];
+    if (lm?.area) {
+      const fid = `area-fill-${lm.id}`, lid = `area-line-${lm.id}`;
+      if (map.getLayer(fid)) map.setLayoutProperty(fid, 'visibility', 'visible');
+      if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', 'visible');
+    }
 
     // Ease map so marker is in the upper portion of screen, clear of the modal
     map.easeTo({
@@ -882,7 +958,11 @@
     animationFrameIds.forEach(id => cancelAnimationFrame(id));
     if (pulseAnimationId !== null) cancelAnimationFrame(pulseAnimationId);
     poiMarkers.forEach(m => m.remove());
-    if (map) map.remove();
+    if (map) {
+      areaLayerIds.forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
+      areaSourceIds.forEach(id => { if (map.getSource(id)) map.removeSource(id); });
+      map.remove();
+    }
   });
 </script>
 

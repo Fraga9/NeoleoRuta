@@ -14,6 +14,12 @@ export interface Landmark {
   svg?: string;
   /** Optional gallery image URLs shown in the modal. */
   images?: string[];
+  /**
+   * Optional polygon defining the landmark's area on the map.
+   * Array of [lng, lat] pairs forming a closed ring (first ≠ last is fine — auto-closed).
+   * When present, a semi-transparent fill is drawn instead of/in addition to the point marker.
+   */
+  area?: [number, number][];
 }
 
 export const CATEGORY_COLOR: Record<LandmarkCategory, string> = {
@@ -87,6 +93,19 @@ export const landmarks: Landmark[] = [
     routeQueryName: 'Parque Fundidora',
     // Alto horno industrial — torre cónica con base ancha y chimeneas
     svg: '<path d="M8 22V10l4-8 4 8v12H8z"/><line x1="6" y1="22" x2="18" y2="22"/><line x1="8" y1="15" x2="16" y2="15"/><line x1="9" y1="19" x2="15" y2="19"/>',
+    // Polygon covering the full Fundidora park grounds (adjust vertices as needed)
+    area: [
+      [-100.2832534, 25.6822531],
+      [-100.2796578, 25.6826167],
+      [-100.2795110, 25.6811815],
+      [-100.2777725, 25.6813097],
+      [-100.2773962, 25.6761470],
+      [-100.2828109, 25.6746962],
+      [-100.2869922, 25.6734526],
+      [-100.2901073, 25.6757325],
+      [-100.2895219, 25.6797082],
+      [-100.2904836, 25.6816112]
+    ],
   },
   {
     id: 'barrio-antiguo',
@@ -99,6 +118,13 @@ export const landmarks: Landmark[] = [
     routeQueryName: 'Barrio Antiguo',
     // Portal colonial con arco de medio punto y puerta doble
     svg: '<path d="M4 22V11a8 8 0 0116 0v11"/><line x1="4" y1="22" x2="20" y2="22"/><path d="M10 22v-6a2 2 0 014 0v6"/><line x1="12" y1="3" x2="12" y2="5"/>',
+    // Polygon covering Barrio Antiguo — roughly between Hidalgo, Pino Suárez, Padre Mier and Colón
+    area: [
+      [-100.3086968, 25.6684567],
+      [-100.3043232, 25.6675947],
+      [-100.3049225, 25.6653536],
+      [-100.3090921, 25.6657788]
+    ],
   },
   {
     id: 'obispado',

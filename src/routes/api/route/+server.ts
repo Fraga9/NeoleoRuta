@@ -14,7 +14,8 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject, streamText } from 'ai';
 import { env } from '$env/dynamic/private';
 import { planRoute, planRouteFromCoords, buildPlanDirect, type PlanResult } from '$lib/server/planRoute';
-import { haversineDistance } from '$lib/engine/raptorData';
+import { haversineDistance, raptorData, findRoutesNearPoint, type TransportType } from '$lib/engine/raptorData';
+import { geocodeMulti } from '$lib/server/geocoding';
 import { transitRoutes } from '$lib/data/transitRoutes';
 import { resolveCoordinates } from '$lib/data/knownPlaces';
 import { z } from 'zod';
@@ -64,31 +65,74 @@ const P3A = /^¿?\s*(?:(?:oye|mira|ey|hey|we|wey|oiga|disculpa|disculpe|porfa|or
 // Pattern 3b: "ruta a/al/hacia Y"
 const P3B = /^¿?\s*(?:(?:oye|mira|ey|hey|we|wey|oiga|disculpa|disculpe|porfa|orale)[,;]?\s+)?ruta\s+(?:a|al|a\s+la|hacia)\s+(.+?)[?.!]?\s*$/i;
 
-function fastNLU(message: string): { origin?: string; destination?: string } | null {
+// ── Routes-near patterns (Feature 1: "qué rutas pasan por X") ──
+
+// Pattern 5: "qué rutas/camiones/lineas pasan por X"
+const P5_ROUTES_NEAR = /^¿?\s*(?:(?:oye|mira|ey|hey|we|wey)[,;]?\s+)?(?:qu[eé]\s+)?(?:rutas?|cami[oó]n(?:es)?|l[ií]neas?|transporte)\s+(?:pasan?|hay|circulan?|sirven?|llegan?)\s+(?:por|en|cerca\s+de|a)\s+(?:el\s+|la\s+|los\s+|las\s+)?(.+?)[?.!]?\s*$/i;
+
+// Pattern 6: "qué metro/camión me deja cerca de X" (filtered by transport type)
+const P6_FILTERED = /^¿?\s*(?:qu[eé]\s+)?(metros?|cami[oó]n(?:es)?|ecov[ií]a|rutas?|l[ií]neas?\s+de\s+metro)\s+(?:me\s+)?(?:dejan?|llevan?|pasan?|sirven?)\s+(?:cerca\s+de|por|en|a|al|hasta)\s+(?:el\s+|la\s+)?(.+?)[?.!]?\s*$/i;
+
+// ── NLU Result Types ──
+
+type NLURouteResult = { type: 'route'; origin?: string; destination: string };
+type NLURoutesNearResult = { type: 'routes-near'; location: string; filter?: TransportType };
+type NLUResult = NLURouteResult | NLURoutesNearResult | null;
+
+function parseTransportFilter(match: string): TransportType | undefined {
+  const m = match.toLowerCase();
+  if (m.includes('metro') || m.includes('línea de metro') || m.includes('linea de metro')) return 'metro';
+  if (m.includes('ecovia') || m.includes('ecovía')) return 'ecovia';
+  if (m.includes('camion') || m.includes('camión')) return 'bus';
+  // 'ruta'/'rutas' are generic — no filter (show all transport types)
+  return undefined;
+}
+
+function fastNLU(message: string): NLUResult {
   const raw = message.trim();
   const m = norm(raw);
 
+  // ── Routes-near patterns (check first, they're more specific) ──
+
+  // P6: Filtered by transport type ("qué metro me deja cerca de...")
+  const m6 = m.match(P6_FILTERED);
+  if (m6) {
+    return { 
+      type: 'routes-near', 
+      location: m6[2].trim(),
+      filter: parseTransportFilter(m6[1]),
+    };
+  }
+  
+  // P5: General routes-near ("qué rutas pasan por...")
+  const m5 = m.match(P5_ROUTES_NEAR);
+  if (m5) {
+    return { type: 'routes-near', location: m5[1].trim() };
+  }
+
+  // ── Route planning patterns ──
+
   const m1 = m.match(P1);
-  if (m1) return { origin: m1[1].trim(), destination: m1[2].trim() };
+  if (m1) return { type: 'route' as const, origin: m1[1].trim(), destination: m1[2].trim() };
 
   const m2a = m.match(P2A);
-  if (m2a) return { origin: m2a[2].trim(), destination: m2a[1].trim() };
+  if (m2a) return { type: 'route' as const, origin: m2a[2].trim(), destination: m2a[1].trim() };
 
   const m2b = m.match(P2B);
-  if (m2b) return { destination: m2b[1].trim() };
+  if (m2b) return { type: 'route' as const, destination: m2b[1].trim() };
 
   const m3a = m.match(P3A);
-  if (m3a) return { origin: m3a[2].trim(), destination: m3a[1].trim() };
+  if (m3a) return { type: 'route' as const, origin: m3a[2].trim(), destination: m3a[1].trim() };
 
   const m3b = m.match(P3B);
-  if (m3b) return { destination: m3b[1].trim() };
+  if (m3b) return { type: 'route' as const, destination: m3b[1].trim() };
 
   // Pattern 4: Implicit destination — bare place name that exists in knownPlaces
   // Only match short inputs (≤4 words) that don't look like questions
   const wordCount = raw.split(/\s+/).length;
   const looksLikeQuestion = /^[¿?]|(?:^|\s)(?:qu[eé]|c[oó]mo|cu[aá]l|d[oó]nde|por\s*qu[eé]|cu[aá]nto)/i.test(m);
   if (wordCount <= 4 && !looksLikeQuestion && resolveCoordinates(raw)) {
-    return { destination: raw };
+    return { type: 'route' as const, destination: raw };
   }
 
   return null; // fallback to Gemini
@@ -135,9 +179,11 @@ export const POST = async ({ request }: { request: Request }) => {
     message: string;
     userLocation?: [number, number] | null;
     clarification?: {
-      field: 'origin' | 'destination';
+      field: 'origin' | 'destination' | 'location';
       selectedCoords: [number, number];
       selectedLabel: string;
+      queryType?: 'routes-near';
+      filter?: TransportType;
       partialIntent: {
         origin?: string;
         originCoords?: [number, number];
@@ -176,6 +222,37 @@ export const POST = async ({ request }: { request: Request }) => {
           console.log(`[ROUTE] Clarification: ${clarification.field} → "${clarification.selectedLabel}"`);
           const pi = clarification.partialIntent;
 
+          // ── Routes-near location clarification ──
+          if (clarification.field === 'location' && clarification.queryType === 'routes-near') {
+            const routes = findRoutesNearPoint(
+              raptorData,
+              clarification.selectedCoords,
+              800,
+              userLocation ?? undefined,
+              clarification.filter
+            );
+            console.log(`[ROUTES-NEAR] Clarification resolved: ${routes.length} routes near "${clarification.selectedLabel}"`);
+            send('routes-list', {
+              location: clarification.selectedLabel,
+              coords: clarification.selectedCoords,
+              routes,
+              filter: clarification.filter,
+            });
+            const filterText = clarification.filter === 'metro' ? 'metro'
+              : clarification.filter === 'ecovia' ? 'Ecovía'
+              : 'rutas';
+            if (routes.length === 0) {
+              send('nlg-chunk', { text: `No encontré ${filterText} que pasen cerca de ${clarification.selectedLabel} (radio 800m).` });
+            } else {
+              const names = routes.slice(0, 3).map(r => r.label).join(', ');
+              const more = routes.length > 3 ? ` y ${routes.length - 3} más` : '';
+              send('nlg-chunk', { text: `Por ${clarification.selectedLabel} pasan ${routes.length} ${filterText}: ${names}${more}.` });
+            }
+            send('done', {});
+            close();
+            return;
+          }
+
           if (clarification.field === 'destination') {
             const originName = pi.origin || 'Tu ubicación actual';
             const originCoords = pi.originCoords || userLocation || [-100.3161, 25.6866];
@@ -206,15 +283,104 @@ export const POST = async ({ request }: { request: Request }) => {
           }
 
         } else {
-          // ── Normal flow: NLU → Routing ──
-          let intent: { isRouteQuery: boolean; origin?: string; destination?: string };
-
+          // ── Normal flow: NLU → Routing or Routes-Near ──
           const fastResult = fastNLU(message);
+          
           if (fastResult) {
-            intent = { isRouteQuery: true, ...fastResult };
             console.log(`[TIMING] NLU (regex): ${(performance.now() - t0).toFixed(2)}ms`);
-            console.log('[ROUTE NLU] Fast match:', intent);
+            console.log('[ROUTE NLU] Fast match:', fastResult);
+            
+            // ── Handle routes-near queries ──
+            if (fastResult.type === 'routes-near') {
+              const tRoutesNear = performance.now();
+              
+              // Geocode the location
+              const geoResult = await geocodeMulti(fastResult.location, userLocation ?? undefined);
+              
+              if (geoResult.status === 'ambiguous') {
+                // Send clarification for location disambiguation
+                send('clarification', {
+                  field: 'location' as const,
+                  original: fastResult.location,
+                  candidates: geoResult.candidates,
+                  queryType: 'routes-near',
+                  filter: fastResult.filter,
+                });
+                send('done', {});
+                close();
+                return;
+              }
+              
+              if (geoResult.status === 'not_found') {
+                send('done', { 
+                  plan: null, 
+                  nlgText: `No encontré "${fastResult.location}". ¿Podrías ser más específico?`,
+                  error: { message: 'Location not found' }
+                });
+                close();
+                return;
+              }
+              
+              // Find routes near the location
+              const routes = findRoutesNearPoint(
+                raptorData,
+                geoResult.coords,
+                800,  // 800m radius — covers metro stations ~750m from landmark coords
+                userLocation ?? undefined,
+                fastResult.filter
+              );
+              
+              console.log(`[ROUTES-NEAR] Found ${routes.length} routes near "${geoResult.label}"`);
+              console.log(`[TIMING] Routes-near total: ${(performance.now() - tRoutesNear).toFixed(0)}ms`);
+              
+              // Send routes list
+              send('routes-list', {
+                location: geoResult.label,
+                coords: geoResult.coords,
+                routes,
+                filter: fastResult.filter,
+              });
+              
+              // Generate friendly NLG response
+              const filterText = fastResult.filter 
+                ? (fastResult.filter === 'metro' ? 'metro' : fastResult.filter === 'ecovia' ? 'Ecovía' : 'camiones')
+                : 'rutas';
+              
+              if (routes.length === 0) {
+                send('nlg-chunk', { 
+                  text: `No encontré ${filterText} que pasen cerca de ${geoResult.label} (en un radio de 500m). Prueba con una ubicación diferente.`
+                });
+              } else {
+                const routeNames = routes.slice(0, 3).map(r => r.label).join(', ');
+                const moreText = routes.length > 3 ? ` y ${routes.length - 3} más` : '';
+                send('nlg-chunk', { 
+                  text: `Por ${geoResult.label} pasan ${routes.length} ${filterText}: ${routeNames}${moreText}. Te muestro las opciones ordenadas.`
+                });
+              }
+              
+              send('done', {});
+              close();
+              return;
+            }
+            
+            // ── Handle route planning queries ──
+            // fastResult.type === 'route'
+            const intent = fastResult;
+            
+            // ── Routing (RAPTOR + OSRM) ──
+            const tRouteStart = performance.now();
+            if (intent.origin && intent.origin.trim()) {
+              result = await planRoute(intent.origin, intent.destination, userLocation ?? undefined);
+            } else if (userLocation) {
+              console.log('[ROUTE] Using GPS location as origin:', userLocation);
+              result = await planRouteFromCoords('Tu ubicación actual', userLocation, intent.destination);
+            } else {
+              result = await planRoute('Centro de Monterrey', intent.destination, undefined);
+            }
+            console.log(`[TIMING] Routing total: ${(performance.now() - tRouteStart).toFixed(0)}ms`);
+            
           } else {
+            // ── Gemini fallback for unrecognized patterns ──
             const { object: geminiIntent } = await generateObject({
               model: google('gemini-2.5-flash'),
               providerOptions: {
@@ -230,28 +396,28 @@ export const POST = async ({ request }: { request: Request }) => {
 Si no menciona origen, deja origin vacío.
 Mensaje: "${message}"`,
             });
-            intent = geminiIntent;
+            
             console.log(`[TIMING] NLU (gemini): ${(performance.now() - t0).toFixed(0)}ms`);
-            console.log('[ROUTE NLU] Gemini intent:', intent);
-          }
+            console.log('[ROUTE NLU] Gemini intent:', geminiIntent);
 
-          if (!intent.isRouteQuery || !intent.destination) {
-            send('done', { plan: null, nlgText: null, error: null });
-            close();
-            return;
-          }
+            if (!geminiIntent.isRouteQuery || !geminiIntent.destination) {
+              send('done', { plan: null, nlgText: null, error: null });
+              close();
+              return;
+            }
 
-          // ── Routing (RAPTOR + OSRM) ──
-          const tRouteStart = performance.now();
-          if (intent.origin && intent.origin.trim()) {
-            result = await planRoute(intent.origin, intent.destination, userLocation ?? undefined);
-          } else if (userLocation) {
-            console.log('[ROUTE] Using GPS location as origin:', userLocation);
-            result = await planRouteFromCoords('Tu ubicación actual', userLocation, intent.destination);
-          } else {
-            result = await planRoute('Centro de Monterrey', intent.destination, undefined);
+            // ── Routing (RAPTOR + OSRM) ──
+            const tRouteStart = performance.now();
+            if (geminiIntent.origin && geminiIntent.origin.trim()) {
+              result = await planRoute(geminiIntent.origin, geminiIntent.destination, userLocation ?? undefined);
+            } else if (userLocation) {
+              console.log('[ROUTE] Using GPS location as origin:', userLocation);
+              result = await planRouteFromCoords('Tu ubicación actual', userLocation, geminiIntent.destination);
+            } else {
+              result = await planRoute('Centro de Monterrey', geminiIntent.destination, undefined);
+            }
+            console.log(`[TIMING] Routing total: ${(performance.now() - tRouteStart).toFixed(0)}ms`);
           }
-          console.log(`[TIMING] Routing total: ${(performance.now() - tRouteStart).toFixed(0)}ms`);
         }
 
         // ── Handle result ──

@@ -7,6 +7,7 @@
   import type { RouteId } from '$lib/data/transitRoutes';
   import RouteStepsCard from './RouteStepsCard.svelte';
   import RouteOptionsTabs from './RouteOptionsTabs.svelte';
+  import RoutesListCard, { type RoutesListData, type RouteNearby } from './RoutesListCard.svelte';
   import { calcTotalFare } from '$lib/data/fareRules';
   import { landmarkStore } from '$lib/stores/landmarkStore';
 
@@ -236,13 +237,15 @@
 
   // ── Disambiguation state ──
   let pendingClarification = $state<{
-    field: 'origin' | 'destination';
+    field: 'origin' | 'destination' | 'location';
     original: string;
     candidates: Array<{ label: string; coords: [number, number] }>;
     partialIntent: Record<string, any>;
+    queryType?: 'route' | 'routes-near';
+    filter?: 'metro' | 'ecovia' | 'bus' | null;
   } | null>(null);
 
-  const chat = new Chat({ api: '/api/chat' } as any);
+const chat = new Chat({ api: '/api/chat' } as any);
   let routeMessages = $state<Array<{
     id: string;
     role: string;
@@ -250,6 +253,7 @@
     plan?: any;
     alternatives?: any[];
     candidates?: Array<{ label: string; coords: [number, number] }>;
+    routesList?: RoutesListData;
   }>>([]);
 
   let input = $state('');
@@ -331,12 +335,22 @@
           isRouteLoading = false;
           pendingClarification = {
             field: data.field, original: data.original,
-            candidates: data.candidates, partialIntent: data.partialIntent,
+            candidates: data.candidates, partialIntent: data.partialIntent ?? {},
+            queryType: data.queryType, filter: data.filter,
           };
           routeMessages = [...routeMessages, {
             id: `assistant-${Date.now()}`, role: 'assistant',
-            text: `Encontré varias opciones para "${data.original}" como ${data.field === 'destination' ? 'destino' : 'origen'}:`,
+            text: `Encontré varias opciones para "${data.original}" como ${data.field === 'destination' ? 'destino' : data.field === 'origin' ? 'origen' : 'ubicación'}:`,
             candidates: data.candidates,
+          }];
+          gotRoute = true;
+        } else if (eventType === 'routes-list') {
+          // Feature 1: Store as a message so it persists in chat history
+          isRouteLoading = false;
+          const rlId = `assistant-${Date.now()}`;
+          routeMessages = [...routeMessages, {
+            id: rlId, role: 'assistant', text: '',
+            routesList: { location: data.location, coords: data.coords, routes: data.routes, filter: data.filter },
           }];
           gotRoute = true;
         } else if (eventType === 'done') {
@@ -357,10 +371,16 @@
     if (!candidate) return;
 
     routeMessages = [...routeMessages, { id: `user-${Date.now()}`, role: 'user', text: candidate.label }];
-    const clarPayload = {
+    const clarPayload: any = {
       field: pendingClarification.field, selectedCoords: candidate.coords,
       selectedLabel: candidate.label, partialIntent: pendingClarification.partialIntent,
     };
+    // For routes-near location clarification, include metadata so the server
+    // can run findRoutesNearPoint instead of routing
+    if (pendingClarification.queryType === 'routes-near') {
+      clarPayload.queryType = 'routes-near';
+      clarPayload.filter = pendingClarification.filter;
+    }
     pendingClarification = null;
     isRouteLoading = true;
     mapStore.clearRoutes();
@@ -612,6 +632,13 @@
             {#if message.role === 'user'}
               <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-primary text-on-primary rounded-[1.25rem] rounded-tr-md shadow-elevation-1">
                 {message.text}
+              </div>
+            {:else if 'routesList' in message && message.routesList}
+              <div class="w-full max-w-[92%]">
+                <RoutesListCard
+                  data={message.routesList}
+                  onRouteSelect={(route) => console.log('[ROUTES-LIST] Selected:', route)}
+                />
               </div>
             {:else if 'plan' in message && message.plan}
               <!-- Route response: short greeting + visual step card -->

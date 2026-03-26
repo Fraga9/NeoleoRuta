@@ -302,6 +302,97 @@ export function findNearestStations(
   }).slice(0, count);
 }
 
+// ── Routes Near Point Finder (for "qué rutas pasan por X" queries) ──
+
+export type TransportType = 'metro' | 'ecovia' | 'bus';
+
+export interface RouteNearPoint {
+  routeId: RouteId;
+  label: string;
+  color: string;
+  nearestStop: string;
+  nearestStopCoords: [number, number];
+  distanceToLocation: number;  // meters to the queried location
+  distanceToUser?: number;     // meters to user's GPS (if available)
+  type: TransportType;
+}
+
+/**
+ * Find all transit routes that pass near a given location.
+ * Used for queries like "¿Qué rutas pasan por el SAT?"
+ * 
+ * @param data - RAPTOR data instance
+ * @param targetCoords - Location to search near [lng, lat]
+ * @param maxDistanceMeters - Maximum distance from target (default 500m)
+ * @param userLocation - Optional user GPS for sorting by proximity to user
+ * @param filter - Optional filter by transport type
+ * @returns Array of routes sorted by type (metro > ecovia > bus), then by distance
+ */
+export function findRoutesNearPoint(
+  data: RaptorInstance,
+  targetCoords: [number, number],
+  maxDistanceMeters: number = 500,
+  userLocation?: [number, number],
+  filter?: TransportType | null
+): RouteNearPoint[] {
+  // Map to track best (closest) stop per route
+  const routeMap = new Map<string, RouteNearPoint>();
+  
+  for (const stop of data.stops.values()) {
+    const dist = haversineDistance(targetCoords, stop.coords);
+    if (dist > maxDistanceMeters) continue;
+    
+    const routeIndices = data.routesByStop.get(stop.id);
+    if (!routeIndices) continue;
+    
+    for (const routeIdx of routeIndices) {
+      const route = data.routes[routeIdx];
+      
+      // Determine transport type
+      const type: TransportType = route.id.startsWith('metro-') ? 'metro' 
+                                : route.id === 'ecovia' ? 'ecovia' 
+                                : 'bus';
+      
+      // Apply filter if specified
+      if (filter && type !== filter) continue;
+      
+      // Deduplicate ida/vuelta by using base route ID
+      const baseId = route.id.replace(/-ida$|-vuelta$/, '');
+      
+      const existing = routeMap.get(baseId);
+      if (!existing || dist < existing.distanceToLocation) {
+        routeMap.set(baseId, {
+          routeId: route.id,
+          label: route.label.replace(/ \(IDA\)$| \(VUELTA\)$/i, ''),
+          color: route.color,
+          nearestStop: stop.name,
+          nearestStopCoords: stop.coords,
+          distanceToLocation: Math.round(dist),
+          distanceToUser: userLocation 
+            ? Math.round(haversineDistance(stop.coords, userLocation)) 
+            : undefined,
+          type,
+        });
+      }
+    }
+  }
+  
+  // Sort: by type priority (metro > ecovia > bus), then by distance to user or location
+  const typeOrder: Record<TransportType, number> = { metro: 0, ecovia: 1, bus: 2 };
+  
+  return [...routeMap.values()].sort((a, b) => {
+    // Primary: sort by transport type
+    if (typeOrder[a.type] !== typeOrder[b.type]) {
+      return typeOrder[a.type] - typeOrder[b.type];
+    }
+    // Secondary: sort by distance to user if available, otherwise to location
+    if (a.distanceToUser !== undefined && b.distanceToUser !== undefined) {
+      return a.distanceToUser - b.distanceToUser;
+    }
+    return a.distanceToLocation - b.distanceToLocation;
+  });
+}
+
 // ── Singleton ──
 
 export const raptorData = buildRaptorData();
