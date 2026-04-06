@@ -245,7 +245,7 @@
     filter?: 'metro' | 'ecovia' | 'bus' | null;
   } | null>(null);
 
-const chat = new Chat({ api: '/api/chat' } as any);
+  const chat = new Chat({ api: '/api/chat' } as any);
   let routeMessages = $state<Array<{
     id: string;
     role: string;
@@ -444,13 +444,6 @@ const chat = new Chat({ api: '/api/chat' } as any);
     });
   }
 
-  const suggestions = [
-    { text: 'Cómo llego al Estadio BBVA?', label: 'Estadio BBVA' },
-    { text: 'Rutas a Pabellón M', label: 'Pabellón M' },
-    { text: 'De Uni a Fundidora', label: 'Fundidora' },
-    { text: 'Cómo llego a Macroplaza?', label: 'Macroplaza' },
-  ];
-
   function submitSuggestion(text: string) {
     input = text;
     handleSubmit(new Event('submit') as any);
@@ -510,27 +503,27 @@ const chat = new Chat({ api: '/api/chat' } as any);
     tabindex="0"
   >
     <!-- Handle pill -->
-    <div class="flex justify-center pt-2.5 pb-1">
-      <div class="h-[5px] w-9 rounded-full bg-on-primary-container/25"></div>
+    <div class="flex justify-center pt-3 pb-1">
+      <div class="h-[5px] w-10 rounded-full bg-on-primary-container/25"></div>
     </div>
 
     <!-- Brand + Status row -->
-    <div class="flex items-center justify-between px-5 pb-2.5 pt-0.5">
-      <div class="flex items-center gap-2.5 min-w-0">
-        <div class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-2xl bg-primary">
-          <svg class="h-4 w-4 text-on-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+    <div class="flex items-center justify-between px-5 pb-3 pt-1 w-full">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
               d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
           </svg>
         </div>
-        <div class="min-w-0">
-          <p class="text-[15px] font-bold leading-tight text-on-surface">Neoleo Ruta</p>
+        <div class="min-w-0 flex flex-col justify-center">
+          <p class="text-[16px] font-bold leading-tight text-on-surface tracking-tight mb-0.5">NeoLeo Ruta</p>
           {#if allMessages.length > 0 && sheetMode === 'compact'}
-            <p class="max-w-[190px] truncate text-[12px] leading-tight text-on-surface/50">
+            <p class="max-w-[190px] truncate text-[13px] leading-tight text-on-surface/50">
               {isRouteLoading || isStreaming ? 'Calculando ruta...' : lastAssistantPreview}
             </p>
           {:else if sheetMode === 'compact'}
-            <p class="text-[12px] leading-tight text-on-surface/40">Monterrey · Transporte público</p>
+            <p class="text-[12px] font-medium leading-tight text-on-surface/40 tracking-wide">Monterrey · Movilidad</p>
           {/if}
         </div>
       </div>
@@ -540,21 +533,21 @@ const chat = new Chat({ api: '/api/chat' } as any);
           onclick={() => springTo(halfH)}
           class="flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-primary-container active:bg-primary/20 transition-colors"
         >
-          <span class="text-[12px] font-semibold text-on-primary-container">{allMessages.length} msg</span>
+          <span class="text-[12px] font-bold text-on-primary-container">{allMessages.length} msg</span>
         </button>
       {/if}
     </div>
   </div>
 
   <!-- ── Search Bar ── -->
-  <div class="flex-shrink-0 px-4 pb-3">
+  <div class="flex-shrink-0 px-4 pb-3 w-full">
     <form onsubmit={handleSubmit}>
       <div
-        class="relative flex items-center rounded-xl transition-all duration-200"
-        style="background: {isInputFocused ? 'var(--color-surface)' : 'rgba(40,90,113,0.07)'}; {isInputFocused ? 'outline: 2px solid var(--color-primary-container); box-shadow: var(--shadow-elevation-1);' : ''}"
+        class="relative flex items-center rounded-[20px] transition-all duration-300"
+        style="background: {isInputFocused ? 'var(--color-surface)' : 'rgba(40,90,113,0.07)'}; box-shadow: {isInputFocused ? '0 8px 32px -8px rgba(0, 0, 0, 0.1)' : 'inset 0 2px 4px rgba(0,0,0,0.02)'}; border: 1px solid {isInputFocused ? 'rgba(0,0,0,0.05)' : 'transparent'};"
       >
-        <svg class="pointer-events-none absolute left-3.5 h-[18px] w-[18px] text-primary/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        <svg class="pointer-events-none absolute left-3.5 h-[18px] w-[18px] text-on-surface/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
         </svg>
         <input
           type="text"
@@ -566,14 +559,14 @@ const chat = new Chat({ api: '/api/chat' } as any);
             if (sheetMode === 'compact') springTo(halfH);
           }}
           onblur={() => { isInputFocused = false; }}
-          placeholder="Buscar ruta o destino"
-          class="w-full bg-transparent py-[11px] pl-10 pr-12 text-[16px] text-on-surface placeholder-on-surface/30 focus:outline-none"
+          placeholder="¿A dónde vamos hoy?"
+          class="w-full bg-transparent py-[12px] pl-11 pr-12 text-[16px] font-medium text-on-surface placeholder-on-surface/30 focus:outline-none"
         />
         {#if input.trim()}
           <button
             type="submit"
             disabled={isStreaming || isRouteLoading}
-            class="absolute right-2 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary transition-all duration-150 active:scale-90 disabled:opacity-40"
+            class="absolute right-2 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg shadow-primary/20 transition-all duration-150 active:scale-90 disabled:opacity-40"
           >
             {#if isStreaming || isRouteLoading}
               <span class="flex gap-0.5">
@@ -595,42 +588,83 @@ const chat = new Chat({ api: '/api/chat' } as any);
   <div
     bind:this={messagesEl}
     class="messages-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-4 overscroll-contain
-           transition-opacity duration-200
+           transition-opacity duration-300
            {sheetMode === 'compact' ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
     style="touch-action: pan-y;"
   >
     {#if allMessages.length === 0}
-      <div class="pt-2 px-1">
-        <p class="mb-3 px-1 text-[12px] font-semibold uppercase tracking-wider text-on-surface/40">Sugerencias</p>
-        <div class="flex flex-col">
-          {#each suggestions as s, i}
-            <button
-              onclick={() => submitSuggestion(s.text)}
-              class="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors active:bg-black/[0.04]"
-            >
-              <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-container">
-                <svg class="h-[17px] w-[17px] text-on-primary-container" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+      <div class="px-2 pt-1 pb-4 w-full">
+        <p class="mb-4 pl-1 text-[16px] font-extrabold tracking-tight text-on-surface">Explora Monterrey</p>
+        <div class="grid grid-cols-3 gap-3 md:gap-4">
+          <!-- 1: Estadio BBVA (Purple) -->
+          <button
+            onclick={() => submitSuggestion('Estadio BBVA')}
+            class="col-span-1 rounded-[24px] bg-[#8953D6] p-4 flex flex-col justify-between items-start aspect-square max-h-[160px] md:max-h-[180px] w-full shadow-sm transition-transform active:scale-95 text-white group"
+          >
+            <div class="p-2 rounded-full bg-white/20 transition-transform group-hover:scale-110">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                <rect x="2" y="4" width="20" height="16" rx="6"/><rect x="5" y="7" width="14" height="10"/><line x1="12" y1="7" x2="12" y2="17"/><circle cx="12" cy="12" r="2"/><rect x="5" y="9.5" width="3" height="5"/><rect x="16" y="9.5" width="3" height="5"/>
+              </svg>
+            </div>
+            <span class="text-[14px] font-bold leading-tight mt-2 text-left">Estadio<br/>BBVA</span>
+          </button>
+
+          <!-- 2: Pabellón M (Orange) -->
+          <button
+            onclick={() => submitSuggestion('Pabellón M')}
+            class="col-span-2 rounded-[24px] bg-[#FF9A00] p-4 flex flex-col justify-between items-start shadow-sm transition-transform active:scale-95 text-white group relative overflow-hidden h-full max-h-[160px] md:max-h-[180px] w-full"
+          >
+            <div class="w-full flex justify-between items-start relative z-10">
+              <div class="p-2 rounded-full bg-white/20 transition-transform group-hover:scale-110">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                  <path d="M2 9a3 3 0 010 6v2a2 2 0 002 2h16a2 2 0 002-2v-2a3 3 0 010-6V7a2 2 0 00-2-2H4a2 2 0 00-2 2v2z"/><line x1="9" y1="4" x2="9" y2="20"/>
                 </svg>
               </div>
-              <span class="flex-1 text-[15px] text-on-surface">{s.label}</span>
-              <svg class="h-4 w-4 flex-shrink-0 text-outline-variant" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </div>
+            <svg class="w-24 h-24 text-white/10 absolute right-[-14px] top-[-14px]" fill="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+            <span class="text-[15px] font-bold mt-2 relative z-10">Pabellón M</span>
+          </button>
+
+          <!-- 3: Fundidora (Yellow) -->
+          <button
+            onclick={() => submitSuggestion('Parque Fundidora')}
+            class="col-span-2 rounded-[24px] bg-[#FFC700] p-4 flex flex-col justify-between items-start shadow-sm transition-transform active:scale-95 text-white group relative overflow-hidden h-full max-h-[160px] md:max-h-[180px] w-full"
+          >
+            <div class="w-full flex justify-between items-start relative z-10">
+              <div class="p-2 rounded-full bg-white/30 text-white transition-transform group-hover:scale-110">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                  <path d="M8 22V10l4-8 4 8v12H8z"/><line x1="6" y1="22" x2="18" y2="22"/><line x1="8" y1="15" x2="16" y2="15"/><line x1="9" y1="19" x2="15" y2="19"/>
+                </svg>
+              </div>
+            </div>
+            <svg class="w-24 h-24 text-white/20 absolute right-[-14px] top-[-14px]" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2A10 10 0 0 0 2 12A10 10 0 0 0 12 22A10 10 0 0 0 22 12A10 10 0 0 0 12 2ZM12 4A8 8 0 0 1 20 12C20 16.42 16.42 20 12 20C7.58 20 4 16.42 4 12C4 7.58 7.58 4 12 4Z"/>
+            </svg>
+            <span class="text-[15px] font-bold text-white mt-2 relative z-10">Parque Fundidora</span>
+          </button>
+
+          <!-- 4: Macroplaza (Green) -->
+          <button
+            onclick={() => submitSuggestion('Macroplaza')}
+            class="col-span-1 rounded-[24px] bg-[#53B927] p-4 flex flex-col justify-between items-start aspect-square max-h-[160px] md:max-h-[180px] w-full shadow-sm transition-transform active:scale-95 text-white group"
+          >
+            <div class="p-2 rounded-full bg-white/20 transition-transform group-hover:scale-110">
+              <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="10" y="2" width="4" height="20" rx="0.5"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="10" y1="13" x2="14" y2="13"/><line x1="7" y1="22" x2="17" y2="22"/>
               </svg>
-            </button>
-            {#if i < suggestions.length - 1}
-              <div class="ml-[52px] h-px bg-primary/[0.07]"></div>
-            {/if}
-          {/each}
+            </div>
+            <span class="text-[14px] font-bold leading-tight mt-2 text-left">Macro-<br/>plaza</span>
+          </button>
         </div>
       </div>
     {:else}
-      <div class="flex flex-col gap-4 pt-2">
+      <div class="flex flex-col gap-4 pt-2 w-full">
         {#each allMessages as message (message.id)}
           <div class="flex flex-col {message.role === 'user' ? 'items-end' : 'items-start'}">
             {#if message.role === 'user'}
-              <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-primary text-on-primary rounded-[1.25rem] rounded-tr-md shadow-elevation-1">
+              <div class="max-w-[85%] px-4 py-2.5 text-[15px] leading-relaxed bg-primary text-on-primary rounded-[1.25rem] rounded-tr-md shadow-lg shadow-primary/10">
                 {message.text}
               </div>
             {:else if 'routesList' in message && message.routesList}
