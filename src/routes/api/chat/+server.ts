@@ -1,13 +1,31 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { streamText, convertToModelMessages } from 'ai';
+import { streamText, convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse } from 'ai';
 import { env } from '$env/dynamic/private';
 import { getEmbedding, supabaseAdmin } from '$lib/server/supabaseAdmin';
 import type { RoutePlan } from '$lib/server/planRoute';
 import { transitRoutes } from '$lib/data/transitRoutes';
+import { buildRouteExplanation } from '$lib/server/nlgTemplate';
+import { detectLang } from '$lib/server/nlu';
 
 const google = createGoogleGenerativeAI({
   apiKey: env.GEMINI_API_KEY || '',
 });
+
+// ── Helper: stream a static string as a UI message stream chunk ──
+// Used for the routePlan branch where we replace the LLM with a deterministic template.
+function staticTextStreamResponse(text: string): Response {
+  const id = crypto.randomUUID();
+  const stream = createUIMessageStream({
+    execute: ({ writer }) => {
+      writer.write({ type: 'start', messageId: id });
+      writer.write({ type: 'text-start', id });
+      writer.write({ type: 'text-delta', id, delta: text });
+      writer.write({ type: 'text-end', id });
+      writer.write({ type: 'finish' });
+    },
+  });
+  return createUIMessageStreamResponse({ stream });
+}
 
 export const POST = async ({ request }: { request: Request }) => {
   const { messages, routePlan } = await request.json() as {
@@ -21,7 +39,16 @@ export const POST = async ({ request }: { request: Request }) => {
     ?? lastUserMsg?.content
     ?? '';
 
-  // ── RAG context (for enriched responses) ──
+  // ── Fast path: routePlan attached → deterministic template, no LLM ──
+  // The visual cards already describe each step; the chat reply just needs
+  // to acknowledge the plan briefly.
+  if (routePlan) {
+    const lang = detectLang(lastUserMessage);
+    const text = buildRouteExplanation(routePlan, lang);
+    return staticTextStreamResponse(text);
+  }
+
+  // ── RAG context (for enriched free-form responses) ──
   let contextText = '';
   if (lastUserMessage) {
     try {
@@ -40,8 +67,7 @@ export const POST = async ({ request }: { request: Request }) => {
     }
   }
 
-  // ── Build system prompt based on route plan (received from client) ──
-  let systemPrompt: string;
+  // ── Build system prompt for general Q&A ──
 
   // Jerga regiomontana compartida en todos los prompts
   const JERGA = `
@@ -62,41 +88,17 @@ JERGA REGIOMONTANA — úsala de forma NATURAL (1-2 frases por respuesta, sin en
 - "Chido/a" = cool, excelente
 - Saludos: "¿Qué onda, raza?", "¿Qué pasó?", "¿Cómo te trata?"`;
 
-  if (routePlan) {
-    systemPrompt = `
-Eres "Neoleo Ruta Inteligente", un asistente de transporte público en Monterrey, NL.
-Tono: amable, directo, con jerga regiomontana natural.
-${JERGA}
+  // Build route catalog from real data
+  const routeCatalog = Object.entries(transitRoutes)
+    .filter(([id]) => !id.endsWith('-vuelta')) // avoid duplicates
+    .map(([id, r]) => {
+      const base = id.replace(/-ida$/, '');
+      const stationNames = r.stations.map(s => s.name).join(', ');
+      return `- ${r.label.replace(/ \(IDA\)$/, '')} [${base}]: ${stationNames}`;
+    })
+    .join('\n');
 
-Se ha calculado automáticamente la siguiente ruta. Tu ÚNICA tarea es explicarla de forma clara y amigable.
-NO inventes rutas diferentes. NO cambies las líneas ni estaciones. Solo describe lo que viene abajo.
-
-RUTA CALCULADA:
-- Origen: ${routePlan.origin.name}
-- Destino: ${routePlan.destination.name}
-- Tiempo total estimado: ${routePlan.totalDuration} minutos
-- Pasos:
-${routePlan.steps.map((s: any, i: number) => {
-  if (s.type === 'walk') return `  ${i + 1}. 🚶 Caminar de "${s.from}" a "${s.to}" (~${s.duration} min)`;
-  if (s.type === 'transit') return `  ${i + 1}. 🚇 Tomar ${s.routeId === 'ecovia' ? 'Ecovía' : `Metro Línea ${s.routeId?.split('-')[1]}`} desde "${s.from}" hasta "${s.to}" (${s.stopsCount} paradas, ~${s.duration} min)`;
-  if (s.type === 'transfer') return `  ${i + 1}. 🔄 Transbordo en "${s.from}" (~${s.duration} min)`;
-  return '';
-}).join('\n')}
-
-${contextText}
-`;
-  } else {
-    // Build route catalog from real data
-    const routeCatalog = Object.entries(transitRoutes)
-      .filter(([id]) => !id.endsWith('-vuelta')) // avoid duplicates
-      .map(([id, r]) => {
-        const base = id.replace(/-ida$/, '');
-        const stationNames = r.stations.map(s => s.name).join(', ');
-        return `- ${r.label.replace(/ \(IDA\)$/, '')} [${base}]: ${stationNames}`;
-      })
-      .join('\n');
-
-    systemPrompt = `
+  const systemPrompt = `
 Eres "Neoleo Ruta Inteligente", un experto asistente de transporte público en Monterrey, NL.
 Tu objetivo es ayudar a la gente con información sobre el transporte público: rutas, tarifas, métodos de pago, horarios, estaciones y consejos prácticos.
 ${JERGA}
@@ -133,7 +135,6 @@ INSTRUCCIONES:
 - Sé conciso: 2-4 oraciones máximo.
 ${contextText}
 `;
-  }
 
   const result = streamText({
     model: google('gemini-2.5-flash'),

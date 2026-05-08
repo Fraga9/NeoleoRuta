@@ -254,6 +254,14 @@
     alternatives?: any[];
     candidates?: Array<{ label: string; coords: [number, number] }>;
     routesList?: RoutesListData;
+    errorSuggestion?: {
+      nearestStation: string;
+      stationCoords: [number, number];
+      distanceKm: number;
+      taxiMinutes: number;
+      taxiCostMXN: number;
+      routeId?: string;
+    } | null;
   }>>([]);
 
   let input = $state('');
@@ -355,10 +363,18 @@
           gotRoute = true;
         } else if (eventType === 'done') {
           const id = `assistant-${Date.now()}`;
-          if (!gotPlan && !pendingClarification && data?.nlgText)
-            routeMessages = [...routeMessages, { id, role: 'assistant', text: data.nlgText }];
-          else if (!gotPlan && !pendingClarification && data?.error)
-            routeMessages = [...routeMessages, { id, role: 'assistant', text: data.error }];
+          if (!gotPlan && !pendingClarification && data?.nlgText) {
+            const suggestion = (data?.error && typeof data.error === 'object') ? data.error.suggestion ?? null : null;
+            routeMessages = [...routeMessages, {
+              id, role: 'assistant',
+              text: data.nlgText,
+              errorSuggestion: suggestion,
+            }];
+          } else if (!gotPlan && !pendingClarification && data?.error) {
+            // data.error may legitimately be a string (older shape) or an object.
+            const text = typeof data.error === 'string' ? data.error : data.error?.message ?? 'Error.';
+            routeMessages = [...routeMessages, { id, role: 'assistant', text }];
+          }
         }
       }
     }
@@ -715,6 +731,18 @@
                         {candidate.label}
                       </button>
                     {/each}
+                  </div>
+                {/if}
+                {#if 'errorSuggestion' in message && message.errorSuggestion}
+                  <div class="mt-3 rounded-xl border border-outline-variant bg-surface px-3.5 py-3 text-[13px] not-prose">
+                    <div class="font-medium text-on-surface mb-1">🚕 Sugerencia</div>
+                    <div class="text-on-surface/80">
+                      Estación más cercana: <span class="font-medium">{message.errorSuggestion.nearestStation}</span>
+                      <span class="opacity-70"> · {message.errorSuggestion.distanceKm} km</span>
+                    </div>
+                    <div class="text-on-surface/80">
+                      Taxi/Uber/Didi: ~{message.errorSuggestion.taxiMinutes} min · ~${message.errorSuggestion.taxiCostMXN} MXN
+                    </div>
                   </div>
                 {/if}
               </div>

@@ -6,6 +6,8 @@
  * time ourselves at 80 m/min (4.8 km/h).
  */
 
+import { fetchWithRetry } from './fetchRetry';
+
 const OSRM_BASE = 'https://routing.openstreetmap.de/routed-foot/route/v1';
 
 const WALK_SPEED = 80;        // meters per minute (4.8 km/h)
@@ -46,13 +48,14 @@ async function osrmDistance(
 
   try {
     const url = `${OSRM_BASE}/foot/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`;
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'NeoleoRuta/1.0' },
-      signal: AbortSignal.timeout(2000),
-    });
+    const response = await fetchWithRetry(
+      url,
+      { headers: { 'User-Agent': 'NeoleoRuta/1.0' } },
+      { retries: 1, perTryTimeoutMs: 2000, backoffMs: 200 },
+    );
 
     if (!response.ok) {
-      console.warn(`[OSRM] HTTP ${response.status} for ${profile} request`);
+      console.warn(`[OSRM] HTTP ${response.status} for ${url}`);
       return null;
     }
 

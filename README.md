@@ -2,212 +2,96 @@
 
 # Neoleo Ruta
 
-**Enrutamiento de transporte publico con IA para Monterrey, NL**
+**Enrutamiento de transporte público con IA para Monterrey, NL**
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6.svg)](https://www.typescriptlang.org/)
 [![SvelteKit](https://img.shields.io/badge/SvelteKit-2-ff3e00.svg)](https://kit.svelte.dev/)
 [![Svelte](https://img.shields.io/badge/Svelte-5-ff3e00.svg)](https://svelte.dev/)
-[![Gemini](https://img.shields.io/badge/Gemini-2.5_Flash-886FBF.svg)](https://ai.google.dev/)
-[![Supabase](https://img.shields.io/badge/Supabase-pgvector-3ECF8E.svg)](https://supabase.com/)
-[![MapLibre](https://img.shields.io/badge/MapLibre_GL-5-396CB2.svg)](https://maplibre.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6.svg)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 *Encuentra tu camino en la Sultana del Norte con lenguaje natural y enrutamiento intermodal.*
+
+> ⚠️ **En desarrollo activo.** Primer release de pruebas.
 
 </div>
 
 ---
 
-## Qué es Neoleo Ruta
+## Qué es
 
-Neoleo Ruta es una app de movilidad para el área metropolitana de Monterrey. El usuario escribe consultas en lenguaje natural (ej. *"Como llego de la Uni a Fundidora?"*) y el sistema calcula la ruta óptima combinando Metro, Ecovía y Rutas Urbanas, dibuja el trayecto en un mapa interactivo y genera instrucciones paso a paso con jerga regia.
+Una app de movilidad para el área metropolitana de Monterrey. Escribe consultas en lenguaje natural (*"¿Cómo llego de la Uni a Fundidora?"*) y el sistema calcula la ruta óptima combinando Metro, Ecovía y rutas urbanas, dibuja el trayecto en un mapa interactivo y lo explica con jerga regia.
 
 **Lo que la diferencia:**
-- Entiende referencias locales informales mediante búsqueda semántica (RAG)
-- Calcula rutas intermodales reales con el algoritmo RAPTOR
-- Genera respuestas contextuales en streaming con tono regiomontano
+- Entiende referencias locales informales mediante búsqueda semántica (RAG).
+- Calcula rutas intermodales reales con el algoritmo RAPTOR.
+- Tiempo total ~2-3 s del primer mensaje al mapa dibujado.
 
 ## Cómo funciona
 
 ```mermaid
 graph LR
-    A[Entrada del usuario] --> B[NLU: Extraccion de intencion]
-    B --> C[Geocodificacion + RAG]
-    C --> D[RAPTOR: Calculo de ruta]
-    D --> E[Gemini: NLG Streaming]
-    E --> F[Mapa + Chat]
-
-    style A fill:#e0f2fe,stroke:#0ea5e9,stroke-width:2px,color:#0c4a6e
-    style B fill:#ffe4e6,stroke:#f43f5e,stroke-width:2px,color:#881337
-    style C fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d
-    style D fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#581c87
-    style E fill:#fef3c7,stroke:#eab308,stroke-width:2px,color:#713f12
-    style F fill:#bae6fd,stroke:#0284c7,stroke-width:2px,color:#075985
+    A[Mensaje del usuario] --> B[NLU regex]
+    B -- match --> D[RAPTOR + OSRM]
+    B -- fallback --> C[Gemini estructura intención]
+    C --> D
+    D --> E[Plan + saludo template]
+    E --> F[Mapa + tarjetas paso a paso]
 ```
 
-1. **NLU** — Regex rapido (<2ms) intenta extraer origen/destino. Si falla, Gemini genera un JSON estructurado (~800ms).
-2. **Geocodificacion** — 3 capas: lugares conocidos hardcodeados, cache, Nominatim. Supabase pgvector resuelve referencias informales via busqueda semantica.
-3. **RAPTOR** — Round-Based Public Transit Routing calcula la ruta optima sobre 461 paradas y 18 direcciones de ruta.
-4. **Mapa** — El frontend dibuja el trayecto inmediatamente con MapLibre GL (GeoJSON + animacion de trazado secuencial).
-5. **NLG** — Gemini 2.5 Flash genera instrucciones en streaming con jerga regia, transmitidas palabra por palabra al chat.
+1. **NLU regex** (~2 ms) intenta extraer origen/destino de patrones comunes. Si falla, **Gemini 2.5 Flash** genera un JSON estructurado.
+2. **Geocodificación por capas**: diccionario local → cache → Nominatim → Photon. Casos ambiguos disparan disambiguación.
+3. **RAPTOR** computa la ruta Pareto-óptima (tiempo + transbordos) sobre la red de transporte.
+4. **OSRM** enriquece los tramos peatonales con geometría real (timeout 2 s).
+5. **NLG**: la respuesta de chat es un **template determinista** con jerga regia. Gemini sólo se usa para Q&A general (`/api/chat`) sin ruta calculada.
 
-## Arquitectura
+## Stack
 
-```mermaid
-graph LR
-    subgraph Frontend
-        direction TB
-        S5[Svelte 5 Runes]
-        TW[Tailwind CSS v4]
-        ML[MapLibre GL JS]
-    end
-
-    subgraph API["API (SvelteKit +server.ts)"]
-        direction TB
-        NLU[NLU Pipeline]
-        RAP[Motor RAPTOR]
-        NLG[NLG Streaming]
-    end
-
-    subgraph Servicios
-        direction TB
-        GEM[Gemini 2.5 Flash]
-        SUP[(Supabase pgvector)]
-        OSRM[OSRM Walking]
-    end
-
-    Frontend -->|SSE / REST| API
-    API --> GEM
-    API --> SUP
-    API --> OSRM
-
-    style Frontend fill:#e0f2fe,stroke:#0ea5e9,stroke-width:2px,color:#0c4a6e
-    style API fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d
-    style Servicios fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#581c87
-```
-
-### Datos de transito
-
-| Red | Rutas | Paradas | Transbordos |
-|-----|-------|---------|-------------|
-| Metro (L1, L2, L3) | 3 lineas (bidireccional) | ~80 estaciones | 3 nodos |
-| Ecovia | 1 linea (bidireccional) | ~30 estaciones | 3 nodos |
-| Rutas Urbanas | 5 rutas (ida + vuelta) | ~350 paradas | Via estaciones compartidas |
-| **Total** | **18 direcciones** | **461 paradas** | **168 transferencias** |
-
-Las rutas de autobus se generan automaticamente desde archivos KML via `scripts/generate-bus-routes.mjs`.
-
-### Velocidades del motor
-
-| Modo | Velocidad | Notas |
-|------|-----------|-------|
-| Metro | 583 m/min | |
-| Ecovia | 417 m/min | |
-| Autobus | 300 m/min | |
-| Caminata | 80 m/min | Haversine x 1.4 factor de desvio |
-
-## Stack tecnologico
-
-| Capa | Tecnologia |
+| Capa | Tecnología |
 |------|-----------|
 | Framework | SvelteKit 2 + Svelte 5 (Runes) |
-| Lenguaje | TypeScript 5.9 (modo estricto) |
+| Lenguaje | TypeScript 5.9 |
 | Estilos | Tailwind CSS v4 |
 | Mapa | MapLibre GL JS 5 |
-| IA | Google Gemini 2.5 Flash via Vercel AI SDK |
+| IA | Gemini 2.5 Flash via Vercel AI SDK |
 | Base de datos | Supabase (PostgreSQL + pgvector) |
-| Geocodificacion | Nominatim (fallback) + cache interno |
-| Geometria peatonal | OSRM (timeout 2s, solo enriquecimiento visual) |
-| Validacion | Zod 4 |
-| Markdown | marked 17 |
+| Geocoding | Nominatim + Photon (con retry y timeout) |
+| Tests | Vitest |
 
-## Instalacion
+Datos de tránsito: ~80 estaciones de Metro (3 líneas), ~30 de Ecovía, ~350 paradas en rutas urbanas. Las rutas de autobús se generan desde KML vía `scripts/generate-bus-routes.mjs`.
 
-### Requisitos previos
+## Setup
 
-- Node.js 20+
-- Una cuenta de [Supabase](https://supabase.com/) con la extension `pgvector` habilitada
-- Una API key de [Google AI Studio](https://aistudio.google.com/) (Gemini)
-
-### Setup
+Requiere Node 20+, una cuenta Supabase con `pgvector` habilitado y una API key de [Google AI Studio](https://aistudio.google.com/).
 
 ```bash
-# Clonar el repositorio
-git clone https://github.com/tu-usuario/neoleo-ruta.git
-cd neoleo-ruta
-
-# Instalar dependencias
+git clone https://github.com/Fraga9/NeoleoRuta.git
+cd NeoleoRuta
 npm install
-
-# Configurar variables de entorno
-cp .env.example .env
-# Editar .env con tus credenciales (ver seccion abajo)
-
-# Inicializar la base de datos de lugares (RAG)
-npx tsx seed.ts
-
-# Iniciar servidor de desarrollo
+cp .env.example .env       # rellena las credenciales
+npx tsx seed.ts            # alimenta pgvector con lugares conocidos
 npm run dev
 ```
 
-### Variables de entorno
-
-Crea un archivo `.env` en la raiz del proyecto:
+Variables de entorno (`.env`):
 
 ```env
-# Google Gemini
-GEMINI_API_KEY=tu_api_key_de_google_ai_studio
-
-# Supabase
+GEMINI_API_KEY=...
 PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
-PUBLIC_SUPABASE_ANON_KEY=tu_anon_key
-SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
+PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-### Scripts disponibles
+Comandos relevantes: `npm run dev`, `npm run build`, `npm run check`, `npm run test`.
 
-| Comando | Descripcion |
-|---------|-------------|
-| `npm run dev` | Servidor de desarrollo con HMR |
-| `npm run build` | Build de produccion |
-| `npm run preview` | Preview del build |
-| `npm run check` | Type-check con svelte-check |
+## Endpoints
 
-## Rendimiento
-
-| Metrica | Valor |
-|---------|-------|
-| NLU via Regex | <2ms |
-| NLU via Gemini | ~800ms |
-| Calculo RAPTOR | ~150-300ms |
-| Mapa interactivo visible | ~1.5s |
-| Inicio de streaming NLG | ~2s |
-
-## Endpoints de API
-
-| Ruta | Metodo | Descripcion |
-|------|--------|-------------|
-| `/api/route` | POST | NLU + RAPTOR + NLG — calcula ruta y genera instrucciones |
-| `/api/chat` | POST | RAG + Gemini — chat general sobre transporte en Monterrey |
+- `POST /api/route` — NLU + RAPTOR. SSE streaming con `plan`, `routes-list`, `clarification`, `nlg-chunk` y `done`.
+- `POST /api/chat` — Q&A general sobre transporte (tarifas, métodos de pago, horarios). Usa RAG sobre Supabase pgvector.
 
 ## Privacidad
 
-- **Sin rastreo**: La ubicacion GPS se usa solo en el cliente para calculos inmediatos. No se almacena ni se envia a terceros.
-- **Sin perfilamiento**: Las consultas se procesan en tiempo real sin almacenar historial ni PII.
-- **Jerga segura**: La jerga regiomontana se incorpora via prompt engineering con limites claros.
+La ubicación GPS se envía al servidor sólo durante la consulta (para sesgar el geocoder y calcular tramos peatonales). No se persiste, no se asocia a un usuario y no se reenvía a terceros más allá de Nominatim/Photon como parte de la geocodificación misma.
 
-## Estructura del proyecto
+## Licencia
 
-```
-src/
-  lib/
-    components/     # Svelte components (MapLibreMap, ChatInterface, etc.)
-    data/           # Datos estaticos de rutas y estaciones
-    engine/         # RAPTOR: raptor.ts, raptorData.ts
-    server/         # Logica server-only: geocoding, OSRM, planRoute
-    stores/         # Svelte stores (mapStore)
-  routes/
-    +page.svelte    # Pagina principal
-    api/route/      # Endpoint de enrutamiento
-    api/chat/       # Endpoint de chat RAG
-scripts/            # Generacion de rutas desde KML
-```
+MIT — ver [LICENSE](LICENSE).

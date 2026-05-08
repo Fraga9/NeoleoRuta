@@ -13,6 +13,7 @@
 
 import { resolveCoordinates } from '$lib/data/knownPlaces';
 import { haversineDistance } from '$lib/engine/raptorData';
+import { fetchWithRetry } from './fetchRetry';
 
 // ── Types ──
 
@@ -115,10 +116,11 @@ async function nominatimStructured(input: string): Promise<GeoCandidate[]> {
   });
 
   try {
-    const res = await fetch(`${NOMINATIM_BASE}?${params}`, {
-      headers: { 'User-Agent': 'NeoleoRuta/1.0 (transit-app)' },
-      signal: AbortSignal.timeout(3000),
-    });
+    const res = await fetchWithRetry(
+      `${NOMINATIM_BASE}?${params}`,
+      { headers: { 'User-Agent': 'NeoleoRuta/1.0 (transit-app)' } },
+      { retries: 1, perTryTimeoutMs: 3000, backoffMs: 250 },
+    );
     if (!res.ok) return [];
     const data = await res.json();
     return data.map((r: any) => ({
@@ -151,10 +153,11 @@ async function nominatimColonia(input: string): Promise<GeoCandidate[]> {
     });
 
     try {
-      const res = await fetch(`${NOMINATIM_BASE}?${params}`, {
-        headers: { 'User-Agent': 'NeoleoRuta/1.0 (transit-app)' },
-        signal: AbortSignal.timeout(3000),
-      });
+      const res = await fetchWithRetry(
+        `${NOMINATIM_BASE}?${params}`,
+        { headers: { 'User-Agent': 'NeoleoRuta/1.0 (transit-app)' } },
+        { retries: 1, perTryTimeoutMs: 3000, backoffMs: 250 },
+      );
       if (!res.ok) continue;
       const data = await res.json();
       allResults.push(...data.map((r: any) => ({
@@ -190,10 +193,11 @@ async function nominatimFreeText(input: string): Promise<GeoCandidate[]> {
     });
 
     try {
-      const res = await fetch(`${NOMINATIM_BASE}?${params}`, {
-        headers: { 'User-Agent': 'NeoleoRuta/1.0 (transit-app)' },
-        signal: AbortSignal.timeout(3000),
-      });
+      const res = await fetchWithRetry(
+        `${NOMINATIM_BASE}?${params}`,
+        { headers: { 'User-Agent': 'NeoleoRuta/1.0 (transit-app)' } },
+        { retries: 1, perTryTimeoutMs: 3000, backoffMs: 250 },
+      );
       if (!res.ok) continue;
       const data = await res.json();
       allResults.push(...data.map((r: any) => ({
@@ -227,9 +231,11 @@ async function photonGeocode(input: string): Promise<GeoCandidate[]> {
     });
 
     try {
-      const res = await fetch(`${PHOTON_BASE}?${params}`, {
-        signal: AbortSignal.timeout(3000),
-      });
+      const res = await fetchWithRetry(
+        `${PHOTON_BASE}?${params}`,
+        {},
+        { retries: 1, perTryTimeoutMs: 3000, backoffMs: 250 },
+      );
       if (!res.ok) return;
       const data = await res.json();
       if (data.features) allFeatures.push(...data.features);
